@@ -1,0 +1,66 @@
+# Design Document: `tpt-reficon`
+## Refinement Types, FFI Contracts, and Fractional Borrows
+
+### 1. Overview
+`tpt-reficon` is the premier formal verification and interoperability toolkit for the Rust ecosystem. It bridges the gap between Rust's compile-time memory safety and the need for mathematical correctness in business logic and cross-language boundaries. Powered by the `tpt-telos` QF_LRA SMT solver, `tpt-reficon` shifts runtime validation and manual FFI auditing into compile-time guarantees.
+
+### 2. Core Primitives
+#### 2.1 Refinement Type Predicates
+Allows developers to attach mathematical predicates to types, ensuring values always satisfy specific constraints (e.g., `x > 0`, `x <= MAX`).
+* **Mechanism:** Proc-macros parse `#[requires(...)]` and `#[ensures(...)]` attributes, translating them into SMT-LIB2 queries for `tpt-telos`.
+* **Zero-Cost:** In release builds, if the SMT solver proves the invariant holds, runtime checks are elided. If it cannot prove it, a lightweight runtime check is inserted.
+
+#### 2.2 Contract-Based FFI Boundaries
+Eliminates the `unsafe` tax of Foreign Function Interfaces (C, C++, Go) by formally verifying memory layouts, alignment, and ABI compatibility.
+* **Mechanism:** Parses C/Go headers and generates Rust bindings wrapped in `#[ffi_contract]`. The SMT solver verifies that the Rust `repr(C)` struct perfectly mirrors the foreign memory layout.
+* **Safety:** Generates safe Rust wrappers that enforce preconditions before crossing the FFI boundary.
+
+#### 2.3 Fractional Permission Borrows (Advanced)
+Extends Rust's rigid `&` / `&mut` model using Separation Logic, allowing multiple threads to hold fractional write permissions to disjoint parts of a data structure.
+* **Mechanism:** Uses the SMT backend to prove non-interference. Exposed via a `#[fractional_borrow]` macro that generates safe, lock-free concurrent accessors.
+
+### 3. Architecture
+```text
+[ Rust Source Code ] 
+       │
+       ▼
+[ Proc-Macro Frontend ] ──(Extracts AST & Contracts)──> [ SMT-LIB2 Generator ]
+       │                                                         │
+       ▼                                                         ▼
+[ Rust Codegen ] <──────────(Verification Results)──────── [ tpt-telos SMT ]
+       │
+       ▼
+[ Final Compiled Binary ]
+```
+
+### 4. API Examples
+```rust
+use tpt_reficon::prelude::*;
+
+// Refinement Types
+#[derive(Refine)]
+#[requires(value > 0 && value <= 100)]
+pub struct BoundedPercentage(u8);
+
+// Contract-Based FFI
+#[ffi_contract(bridge = "go", header = "payment_processor.h")]
+pub struct ForeignPaymentContext {
+    pub id: u64,
+    pub amount: f64,
+}
+
+#[ensures(result.is_ok() -> result.unwrap().status == 200)]
+pub fn process_payment(ctx: &ForeignPaymentContext) -> Result<PaymentReceipt, FFIError> {
+    // Safe FFI call, guaranteed by tpt-telos verification
+    unsafe { ffi_process_payment(ctx) }
+}
+```
+
+### 5. Implementation Strategy
+1. **Phase 1:** Build the proc-macro harness and SMT-LIB2 translation layer.
+2. **Phase 2:** Integrate `tpt-telos` as a build-time daemon to cache SMT results and speed up compilation.
+3. **Phase 3:** Implement the FFI parser (using `bindgen` AST) to auto-generate `#[ffi_contract]` wrappers.
+4. **Phase 4:** Research and prototype Fractional Borrows using external proof assistants linked to the SMT backend.
+
+### 6. Ecosystem Value
+`tpt-reficon` targets systems programmers, embedded developers, and anyone building high-performance bridges between Rust and C/Go. It directly competes with and improves upon `bindgen`, `cbindgen`, and `proptest`, offering a unified, mathematically verified approach to correctness.
