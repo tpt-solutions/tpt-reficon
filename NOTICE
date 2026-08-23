@@ -1,0 +1,10 @@
+tpt-reficon
+Copyright 2026 TPT Solutions
+
+This product includes software developed as part of the tpt-telos project.
+
+Portions of the `tpt-reficon-verifier` crate (the Fourier–Motzkin QF_LRA
+decision procedure) and the memory-layout/alignment proof logic are
+ported/adapted from TPT Solutions' `tpt-telos` project, specifically the
+`tpt-telos-verifier` and `tpt-telos-uir-bridge` components, and are used here
+under the project's dual MIT OR Apache-2.0 licensing.
