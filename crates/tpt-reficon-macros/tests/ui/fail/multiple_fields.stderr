@@ -1,0 +1,5 @@
+error: derive(Refine) expects exactly one field: a tuple struct like `struct Bounded(u8)` or a named-field struct like `struct S { v: u8 }`
+ --> tests/ui/fail/multiple_fields.rs:4:1
+  |
+4 | #[requires(value > 0)]
+  | ^

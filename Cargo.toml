@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/tpt-reficon-verifier",
+    "crates/tpt-reficon-core",
+    "crates/tpt-reficon-macros",
+    "crates/tpt-reficon",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75.0"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/tpt-solutions/tpt-reficon"
+homepage = "https://github.com/tpt-solutions/tpt-reficon"
+keywords = ["refinement", "ffi", "formal-verification", "solver", "smt"]
+categories = ["development-tools", "no-std"]
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+lto = "thin"

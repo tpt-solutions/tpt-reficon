@@ -1,0 +1,5 @@
+error: unsatisfiable refinement type `Impossible`: no value of `i8` satisfies `value > 0 && value < 0`
+ --> tests/ui/fail/unsatisfiable.rs:4:1
+  |
+4 | #[requires(value > 0 && value < 0)]
+  | ^

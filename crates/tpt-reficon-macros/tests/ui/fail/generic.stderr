@@ -1,0 +1,5 @@
+error: derive(Refine) does not support generic structs yet
+ --> tests/ui/fail/generic.rs:5:19
+  |
+5 | pub struct Generic<T>(T);
+  |                   ^

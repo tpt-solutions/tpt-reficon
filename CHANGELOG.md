@@ -8,20 +8,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Initial workspace scaffold: `tpt-reficon-verifier`, `tpt-reficon-core`,
-  `tpt-reficon-macros`, and the `tpt-reficon` facade crate.
+- Initial workspace scaffold with four crates: `tpt-reficon-verifier`,
+  `tpt-reficon-core`, `tpt-reficon-macros`, and the `tpt-reficon` facade.
 - `tpt-reficon-verifier`: in-house QF_LRA decision procedure via
-  Fourier–Motzkin elimination with exact rational arithmetic, including
-  witness reconstruction, plus memory-layout/alignment proof utilities
+  Fourier–Motzkin elimination with exact checked rational arithmetic,
+  including witness reconstruction and case-splitting over `!=` constraints.
+  Overflow, exponential blow-up, and unsupported shapes degrade to a
+  conservative `Unknown` verdict — never a spurious UNSAT.
+- `tpt-reficon-verifier`: memory-layout/alignment proof utilities (C `repr(C)`
+  struct walk, `prove_equivalent`, solver-backed `prove_within_bounds`)
   adapted from the `tpt-telos-uir-bridge` approach.
-- `#[derive(Refine)]` refinement-type frontend with compile-time
-  satisfiability checking and zero-cost elision of redundant runtime checks.
-- `#[requires(...)]` / `#[ensures(...)]` function contract macros.
-- `#[ffi_contract(...)]` macro verifying `repr(C)` struct layouts against
-  parsed C headers using the verifier's layout prover.
-- Experimental `#[fractional_borrow]` prototype behind the `unstable` feature.
-- Build-time verifier caching with optional daemon process and automatic
-  in-process fallback.
+- `tpt-reficon-macros`: `#[derive(Refine)]` frontend parsing
+  `#[requires(...)]` / `#[ensures(...)]` predicates into the internal
+  constraint IR, rejecting unsatisfiable refinements with span-accurate
+  compile errors, and *eliding* the runtime check when the type's domain
+  implies the predicate. Otherwise it emits a precise runtime check
+  (`new` panics, `try_new`/`TryFrom` error) with a `'static` message that
+  never requires the inner type to implement `Debug`.
+- `tpt-reficon-core`: `Refine` trait and the `RefinementError` runtime-check
+  error type (no allocation, usable in `no_std`-adjacent contexts).
+- `tpt-reficon`: facade crate re-exporting `prelude::*` (trait + derive macro
+  + error type) matching the spec.txt API sketch.
+- `trybuild` UI tests covering elided and runtime-checked refinements and
+  compile-fail diagnostics (unsatisfiable, unknown variable, nonlinear,
+  multi-field, generic).
+- GitHub Actions CI: fmt check, clippy `-D warnings`, `cargo test --workspace`,
+  and an MSRV (1.75.0) build job.
+
+### Fixed
+- `tpt-reficon-verifier.solver.is_contradiction`: the `Ordering::Greater` arm
+  returned `false` (satisfiable) — misclassifying the genuine contradiction
+  `0 <= -1` as satisfiable. This made the solver report UNSAT as SAT for
+  disjoint bounds (e.g. `x >= 2 && x <= 1`).
+- `tpt-reficon-verifier.solver.to_inequalities`: flipped rows (`Ge`/`Gt`/`Eq`)
+  now negate the right-hand side as well as the coefficients
+  (`-Σaᵢxᵢ <= k`, not `<= -k`), and unflipped rows keep their coefficients.
+- `tpt-reficon-verifier.solver.bound_expr`: witness reconstruction used the
+  wrong reciprocal (`a_v/1` instead of `1/a_v`) and skipped the sign flip on
+  non-variable coefficients, producing invalid witnesses for
+  multi-variable systems and false `Unknown` results.
+- `tpt-reficon-verifier.solver.reconstruct_witness`: seeding the lower/upper
+  folds with `ZERO` corrupted reconstruction when every explicit bound lay on
+  one side of zero.
+- `tpt-reficon-verifier.solver.fm_core`: combined rows no longer keep
+  zero-valued coefficient entries, which previously skewed elimination
+  heuristics and reconstruction.
+- `tpt-reficon-macros`: corrected the tuple-struct field access
+  (`self.0`, not a recursive `Self(...)` constructor), removed
+  `core::format!` (not available in `core`) in favor of static
+  `&'static str` messages, and dropped runtime format captures named after
+  macro-internal variables.
 
 ### Changed
 - **Deviation from `spec.txt`:** the design document describes emitting
@@ -30,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   internal constraint IR directly (see `tpt-reficon-verifier` docs).
 
 ### Attribution
-- The Fourier–Motzkin decision procedure and the memory-layout proof logic are
-  ported/adapted from TPT Solutions' internal `tpt-telos-verifier` and
-  `tpt-telos-uir-bridge` components. See `NOTICE` for details.
+- The Fourier–Motzkin decision procedure, exact integer-ratio arithmetic, and
+  the memory-layout proof logic are ported/adapted from TPT Solutions'
+  internal `tpt-telos-verifier` and `tpt-telos-uir-bridge` components.
+  See `NOTICE` for details.

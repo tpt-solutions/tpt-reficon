@@ -24,7 +24,11 @@ pub struct Rat {
 }
 
 fn gcd(a: u128, b: u128) -> u128 {
-    if b == 0 { a } else { gcd(b, a % b) }
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
 }
 
 impl Rat {
@@ -44,7 +48,10 @@ impl Rat {
         }
         let g = gcd(n.unsigned_abs(), d.unsigned_abs());
         // g <= min(|n|, d), so these divisions cannot overflow.
-        Some(Rat { n: n / g as i128, d: d / g as i128 })
+        Some(Rat {
+            n: n / g as i128,
+            d: d / g as i128,
+        })
     }
 
     /// Constructs a rational from a signed integer.
@@ -99,9 +106,25 @@ impl Rat {
         self.n == 0
     }
 
+    pub fn is_positive(&self) -> bool {
+        self.n > 0
+    }
+
+    pub fn is_negative(&self) -> bool {
+        self.n < 0
+    }
+
+    /// True iff the value is an exact integer.
+    pub fn is_integer(&self) -> bool {
+        self.d == 1
+    }
+
     /// `n1/d1 + n2/d2 = (n1*d2 + n2*d1) / (d1*d2)`, checked.
     pub fn checked_add(self, rhs: Rat) -> Option<Rat> {
-        let n = self.n.checked_mul(rhs.d)?.checked_add(rhs.n.checked_mul(self.d)?)?;
+        let n = self
+            .n
+            .checked_mul(rhs.d)?
+            .checked_add(rhs.n.checked_mul(self.d)?)?;
         let d = self.d.checked_mul(rhs.d)?;
         Rat::new(n, d)
     }
@@ -111,7 +134,10 @@ impl Rat {
     }
 
     pub fn checked_neg(self) -> Option<Rat> {
-        Some(Rat { n: self.n.checked_neg()?, d: self.d })
+        Some(Rat {
+            n: self.n.checked_neg()?,
+            d: self.d,
+        })
     }
 
     pub fn checked_mul(self, rhs: Rat) -> Option<Rat> {
@@ -190,7 +216,8 @@ impl Ord for Rat {
         // Panics only on overflow, which decision paths avoid via
         // `checked_cmp`; this impl exists for sorting/bookkeeping on small
         // values only.
-        self.checked_cmp(*other).expect("rational comparison overflowed")
+        self.checked_cmp(*other)
+            .expect("rational comparison overflowed")
     }
 }
 
@@ -245,21 +272,9 @@ mod tests {
         let big = Rat::from_i128(i128::MAX);
         assert_eq!(big.checked_add(Rat::ONE), None);
         assert_eq!(big.checked_mul(big), None);
-        assert_eq!(big.checked_cmp(Rat::ONE), None);
-    }
-}
-
-
-    pub fn is_positive(&self) -> bool {
-        self.n > 0
-    }
-
-    pub fn is_negative(&self) -> bool {
-        self.n < 0
-    }
-
-    /// True iff the value is an exact integer.
-    pub fn is_integer(&self) -> bool {
-        self.d == 1
+        // Cross-multiplication overflows: (MAX/1) vs (MAX/2) → MAX*2.
+        let a = Rat::new(i128::MAX, 1).unwrap();
+        let b = Rat::new(i128::MAX, 2).unwrap();
+        assert_eq!(a.checked_cmp(b), None);
     }
 }

@@ -1,0 +1,24 @@
+[package]
+name = "tpt-reficon-verifier"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = """
+Constraint IR and a self-contained Fourier–Motzkin QF_LRA decision procedure,
+plus memory-layout/alignment proof utilities, for tpt-reficon.
+"""
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# Reserved extension point: a future backend that routes nonlinear arithmetic
+# (or very large linear systems) to Z3, mirroring tpt-telos' optional `z3`
+# feature. Not implemented yet; kept so downstream feature-selection code does
+# not need to change when it lands.
+z3-reserved = []

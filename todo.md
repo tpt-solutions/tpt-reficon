@@ -6,42 +6,42 @@ ported in-house from [tpt-telos](https://github.com/tpt-solutions/tpt-telos).
 License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 
 ## Phase 0 — Repository & Governance Setup
-- [ ] Init git repo (`.gitignore` for Rust/Cargo)
-- [ ] `Cargo.toml` workspace manifest (resolver = "2"), pick MSRV and Rust edition
-- [ ] `LICENSE-MIT` and `LICENSE-APACHE` (copyright: TPT Solutions), set `license = "MIT OR Apache-2.0"` convention for all crates
-- [ ] `README.md` (project pitch, from spec.txt overview + API example)
-- [ ] `CONTRIBUTING.md`
-- [ ] `CHANGELOG.md` (Keep a Changelog format)
-- [ ] `rustfmt.toml` / `.clippy.toml` conventions
-- [ ] GitHub Actions CI: fmt check, clippy, `cargo test --workspace`, MSRV check
-- [ ] Issue/PR templates
+- [x] Init git repo (`.gitignore` for Rust/Cargo)
+- [x] `Cargo.toml` workspace manifest (resolver = "2"), pick MSRV and Rust edition
+- [x] `LICENSE-MIT` and `LICENSE-APACHE` (copyright: TPT Solutions), set `license = "MIT OR Apache-2.0"` convention for all crates
+- [x] `README.md` (project pitch, from spec.txt overview + API example)
+- [x] `CONTRIBUTING.md`
+- [x] `CHANGELOG.md` (Keep a Changelog format)
+- [x] `rustfmt.toml` / `.clippy.toml` conventions
+- [x] GitHub Actions CI: fmt check, clippy, `cargo test --workspace`, MSRV check
+- [x] Issue/PR templates
 
 ## Phase 1 — Verifier Core (ported from `tpt-telos-verifier` / `tpt-telos-uir-bridge`)
-- [ ] Study `tpt-telos-verifier` (Fourier–Motzkin QF_LRA solver) and `tpt-telos-uir-bridge`
+- [x] Study `tpt-telos-verifier` (Fourier–Motzkin QF_LRA solver) and `tpt-telos-uir-bridge`
       (memory-layout proofs) source at github.com/tpt-solutions/tpt-telos
-- [ ] Create `crates/tpt-reficon-verifier` crate
-- [ ] Port/adapt the Fourier–Motzkin elimination decision procedure for QF_LRA constraints
-- [ ] Design internal constraint IR (replaces spec.txt's "SMT-LIB2 Generator" concept, since the
+- [x] Create `crates/tpt-reficon-verifier` crate
+- [x] Port/adapt the Fourier–Motzkin elimination decision procedure for QF_LRA constraints
+- [x] Design internal constraint IR (replaces spec.txt's "SMT-LIB2 Generator" concept, since the
       ported solver is not SMT-LIB2-based) — document this deviation from spec.txt
-- [ ] Port memory-layout/alignment proof logic from `tpt-telos-uir-bridge` (needed later for FFI contracts)
-- [ ] Decide on optional `z3` feature flag parity (nonlinear arithmetic fallback)
-- [ ] Attribution: note ported-code origin in `CHANGELOG.md`/`NOTICE`
-- [ ] Unit tests: satisfiable / unsatisfiable linear constraint sets, edge cases
+- [x] Port memory-layout/alignment proof logic from `tpt-telos-uir-bridge` (needed later for FFI contracts)
+- [x] Decide on optional `z3` feature flag parity (nonlinear arithmetic fallback)
+- [x] Attribution: note ported-code origin in `CHANGELOG.md`/`NOTICE`
+- [x] Unit tests: satisfiable / unsatisfiable linear constraint sets, edge cases
 
 ## Phase 2 — Proc-Macro Frontend (`tpt-reficon-macros`)
-- [ ] Create `crates/tpt-reficon-macros` crate (proc-macro2, syn, quote)
-- [ ] Parse `#[derive(Refine)]` on tuple/newtype structs
-- [ ] Parse `#[requires(...)]` / `#[ensures(...)]` attribute predicates
-- [ ] Extract predicate expressions to the internal constraint IR (Phase 1)
-- [ ] Zero-cost elision: call verifier at macro-expansion time; elide runtime check if proved, else emit runtime `assert!`/`Result` check
-- [ ] Diagnostics: span-accurate compile errors for unprovable/malformed predicates
-- [ ] `trybuild` tests: expansion snapshots + compile-fail cases
+- [x] Create `crates/tpt-reficon-macros` crate (proc-macro2, syn, quote)
+- [x] Parse `#[derive(Refine)]` on tuple/newtype structs
+- [x] Parse `#[requires(...)]` / `#[ensures(...)]` attribute predicates
+- [x] Extract predicate expressions to the internal constraint IR (Phase 1)
+- [x] Zero-cost elision: call verifier at macro-expansion time; elide runtime check if proved, else emit runtime `assert!`/`Result` check
+- [x] Diagnostics: span-accurate compile errors for unprovable/malformed predicates
+- [x] `trybuild` tests: expansion snapshots + compile-fail cases
 
 ## Phase 3 — Core Runtime Crate (`tpt-reficon-core`)
-- [ ] Create `crates/tpt-reficon-core` crate
-- [ ] `Refine` trait + runtime-check error types
-- [ ] Shared types/helpers used by macro-generated code
-- [ ] `crates/tpt-reficon` facade crate re-exporting `prelude::*` (macros + core) — matches spec.txt API example
+- [x] Create `crates/tpt-reficon-core` crate
+- [x] `Refine` trait + runtime-check error types
+- [x] Shared types/helpers used by macro-generated code
+- [x] `crates/tpt-reficon` facade crate re-exporting `prelude::*` (macros + core) — matches spec.txt API example
 
 ## Phase 4 — Contract-Based FFI Boundaries
 - [ ] C header ingestion via `bindgen` AST

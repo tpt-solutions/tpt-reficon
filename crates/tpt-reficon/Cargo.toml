@@ -1,0 +1,24 @@
+[package]
+name = "tpt-reficon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Refinement types, FFI contracts, and fractional borrows for Rust, verified by an in-house QF_LRA solver."
+keywords.workspace = true
+categories.workspace = true
+readme = "../../README.md"
+documentation = "https://docs.rs/tpt-reficon"
+
+[lints]
+workspace = true
+
+[dependencies]
+tpt-reficon-core = { path = "../tpt-reficon-core" }
+tpt-reficon-macros = { path = "../tpt-reficon-macros" }
+
+[features]
+default = []
+# Fractional-borrow prototype (semantics may change between releases).
+unstable = []

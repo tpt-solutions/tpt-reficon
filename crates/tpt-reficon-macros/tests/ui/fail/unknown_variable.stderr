@@ -1,0 +1,5 @@
+error: unknown variable `other` in refinement predicate (refined value is `value`)
+ --> tests/ui/fail/unknown_variable.rs:4:12
+  |
+4 | #[requires(other > 0)]
+  |            ^^^^^

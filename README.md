@@ -24,12 +24,17 @@ runtime cost. Everything else gets a precise runtime check.
 - **Refinement types** — `#[derive(Refine)]` + `#[requires(...)]`: contradictory
   refinements are compile errors; refinements implied by the type's domain run
   at zero cost; all others get an exact runtime check with great diagnostics.
-- **Contract-based FFI** — `#[ffi_contract(bridge = "c", header = "...")]`
-  parses a C header, computes its ABI layout, and *proves* your `repr(C)`
-  struct mirrors it byte-for-byte before you ever write `unsafe`.
-- **Fractional borrows (experimental)** — `#[fractional_borrow]` splits access
-  permissions across threads with non-interference validated by the solver.
-  Behind the `unstable` feature flag.
+
+### Roadmap
+
+Not yet implemented — see [`todo.md`](todo.md) for the plan:
+
+- **Contract-based FFI** — `#[ffi_contract(bridge = "c", header = "...")]` to
+  parse a C header, compute its ABI layout, and *prove* your `repr(C)` struct
+  mirrors it byte-for-byte before you ever write `unsafe`.
+- **Fractional borrows (experimental)** — `#[fractional_borrow]` to split
+  access permissions across threads with non-interference validated by the
+  solver. Behind the `unstable` feature flag.
 
 ## Quick start
 
@@ -64,7 +69,7 @@ A refinement that no value can satisfy fails **at compile time**:
 
 ```rust,compile_fail
 #[derive(tpt_reficon::Refine)]
-#[requires(x > 5 && x < 3)] // error: unsatisfiable refinement
+#[requires(value > 5 && value < 3)] // error: unsatisfiable refinement
 struct Impossible(u8);
 ```
 
@@ -72,7 +77,7 @@ And a check the type already guarantees is compiled out entirely:
 
 ```rust
 #[derive(tpt_reficon::Refine)]
-#[requires(x >= 0)] // always true for u64 — zero code emitted
+#[requires(value >= 0)] // always true for u64 — zero code emitted
 struct NonNegativeU64(u64);
 ```
 
@@ -89,7 +94,7 @@ struct NonNegativeU64(u64);
 
 | Flag | Crate | Effect |
 | --- | --- | --- |
-| `unstable` | `tpt-reficon` / `-macros` | Fractional-borrow prototype (semantics may change) |
+| `unstable` | `tpt-reficon` | Reserved for experimental features (e.g. fractional borrows); semantics may change |
 | `z3-reserved` | `tpt-reficon-verifier` | Reserved extension point for a future Z3 parity backend |
 
 ## License

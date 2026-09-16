@@ -18,7 +18,8 @@
 //! Soundness contract: [`unsat`] never returns `true` for a satisfiable
 //! system over ℚ (hence also over ℤ or over any primitive Rust type's domain).
 
-use std::collections::{BTreeMap, BTreeSet};
+use core::cmp::Ordering;
+use std::collections::BTreeSet;
 
 use crate::ir::{satisfies_all, Constraint, Model, Relation};
 use crate::rational::Rat;
@@ -51,18 +52,15 @@ impl Ineq {
     fn is_contradiction(&self) -> Option<bool> {
         if self.coeffs.is_empty() {
             let ord = self.c.checked_cmp(Rat::ZERO)?;
+            // Ineq asserts `0 <= c` (strict: `0 < c`). A constant-only row is
+            // violated exactly when `c < 0` (or `c == 0` with strictness).
             return Some(match ord {
-                Ordering::Less => true,                       // 0 < c is fine; c < 0 is a contradiction
-                Ordering::Equal => self.strict,               // 0 <= 0 ok; 0 < 0 impossible
-                Ordering::Greater => true,                    // 0 <= negative: contradiction
+                Ordering::Less => true,         // 0 <= negative: contradiction
+                Ordering::Equal => self.strict, // 0 <= 0 ok; 0 < 0 impossible
+                Ordering::Greater => false,     // 0 <= positive: always satisfied
             });
         }
         Some(false)
-    }
-
-    /// Drops zero coefficients (normalization hygiene after elimination).
-    fn normalize(&mut self) {
-        self.coeffs.retain(|(_, r)| !r.is_zero());
     }
 }
 
@@ -80,17 +78,30 @@ fn to_inequalities(cs: &[Constraint]) -> Option<Vec<Ineq>> {
                 coeffs.push((v.clone(), r));
             }
         }
-        let rhs_const = match -(lin.constant as i128) {
-            // Negation of i64 fits i128 trivially.
-            k => Rat::from_i128(k),
-        };
-        let push = |coeffs: &Vec<(String, Rat)>, flip: bool, strict: bool| -> Option<()> {
-            let flipped: Vec<(String, Rat)> = if flip {
-                coeffs.iter().map(|(v, r)| (v.clone(), r.checked_neg()?)).collect()
+        let rhs_const = Rat::from_i128(-(lin.constant as i128));
+        let mut push = |coeffs: &Vec<(String, Rat)>, flip: bool, strict: bool| -> Option<()> {
+            // Flipping `sum aᵢxᵢ + k (≥) 0` into row form must negate the
+            // coefficients *and* the right-hand side: `-sum aᵢxᵢ <= k`,
+            // not `<= -k`. Unflipped rows keep their coefficients.
+            let bound = if flip {
+                rhs_const.checked_neg()?
+            } else {
+                rhs_const
+            };
+            let row_coeffs = if flip {
+                let mut negated = Vec::with_capacity(coeffs.len());
+                for (n, r) in coeffs {
+                    negated.push((n.clone(), r.checked_neg()?));
+                }
+                negated
             } else {
                 coeffs.clone()
             };
-            out.push(Ineq { coeffs: flipped, c: rhs_const, strict });
+            out.push(Ineq {
+                coeffs: row_coeffs,
+                c: bound,
+                strict,
+            });
             Some(())
         };
         match rel {
@@ -117,33 +128,45 @@ const BLOWUP_LIMIT: usize = 20_000;
 /// Maximum number of `!=` premises we are willing to case-split on.
 const MAX_NE_SPLITS: usize = 8;
 
+/// Sparse coefficients of a linear expression: `(variable, coefficient)`.
+type Coeffs = Vec<(String, Rat)>;
+
+/// A bound on an eliminated variable expressed over the remaining ones:
+/// `v (≤|≥) Σ coeffs·x + c`, plus its strictness.
+type Bound = (Coeffs, Rat, bool);
+
 /// Bookkeeping for one eliminated (or one-sidedly dropped) variable, used for
 /// witness reconstruction.
 struct Elimination {
     var: String,
     /// lower bounds `v ≥ L(x_rest)`; strict flag ⇒ `v > L`.
-    lowers: Vec<(Vec<(String, Rat)>, Rat, bool)>,
+    lowers: Vec<Bound>,
     /// upper bounds `v ≤ U(x_rest)`; strict flag ⇒ `v < U`.
-    uppers: Vec<(Vec<(String, Rat)>, Rat, bool)>,
+    uppers: Vec<Bound>,
 }
 
 /// Normalizes an inequality mentioning `v` with coefficient `a_v ≠ 0` into a
-/// bound expression over the remaining variables:
-/// `v (<|≤) Σ coeffs·x + c` (upper when `a_v > 0`, lower when `a_v < 0`,
-/// because dividing by a negative flips the inequality).
-fn bound_expr(ineq: &Ineq, v: &str, a_v: &Rat) -> Option<(Vec<(String, Rat)>, Rat)> {
-    let inv = a_v.checked_div(Rat::ONE)?; // 1/a_v ; exact
-    let mut coeffs = Vec::with_capacity(ineq.coeffs.len());
+/// bound expression over the remaining variables.
+///
+/// For an upper (`a_v = p > 0`), `p·v + A ≤ c` becomes
+/// `v ≤ −A/p + c/p`, so every other coefficient is `−r/p`.
+/// For a lower (`a_v = q < 0`), `q·v + A ≤ c` becomes `v ≥ (c−A)/q`,
+/// which expands to coefficient `−r/q` as well: `v ≥ Σ(−r/q)·x + c/q`.
+fn bound_expr(ineq: &Ineq, v: &str, a_v: &Rat) -> Option<(Coeffs, Rat)> {
+    let inv = Rat::ONE.checked_div(*a_v)?; // 1/a_v ; exact
+    let mut coeffs: Coeffs = Vec::with_capacity(ineq.coeffs.len());
     for (name, r) in &ineq.coeffs {
         if name != v {
-            coeffs.push((name.clone(), r.checked_mul(inv)?));
+            // `−r·(1/a_v)` (note the sign flip; the constant keeps `c/a_v`).
+            let neg = r.checked_neg()?;
+            coeffs.push((name.clone(), neg.checked_mul(inv)?));
         }
     }
     Some((coeffs, ineq.c.checked_mul(inv)?))
 }
 
 /// Evaluates a bound expression under a partially built model.
-fn eval_bound(coeffs: &[(String, Rat)], c: Rat, model: &Model) -> Option<Rat> {
+fn eval_bound(coeffs: &Coeffs, c: Rat, model: &Model) -> Option<Rat> {
     let mut acc = c;
     for (name, r) in coeffs {
         let val = model.get(name).copied().unwrap_or(Rat::ZERO);
@@ -195,7 +218,11 @@ fn fm_core(ineqs: &[Ineq]) -> Result<CoreOutcome, String> {
             for ineq in &work {
                 for (name, r) in &ineq.coeffs {
                     if name == v {
-                        if r.is_positive() { pos += 1 } else { neg += 1 }
+                        if r.is_positive() {
+                            pos += 1
+                        } else {
+                            neg += 1
+                        }
                     }
                 }
             }
@@ -220,15 +247,39 @@ fn fm_core(ineqs: &[Ineq]) -> Result<CoreOutcome, String> {
         }
 
         // Record bounds for witness reconstruction before rewriting.
-        let rec_lowers: Option<Vec<_>> =
-            lowers.iter().map(|i| bound_expr(i, &v, i.coeffs.iter().find(|(n, _)| n == &v).map(|(_, r)| r).expect("lower has -v"))).collect();
-        let rec_uppers: Option<Vec<_>> =
-            uppers.iter().map(|i| bound_expr(i, &v, i.coeffs.iter().find(|(n, _)| n == &v).map(|(_, r)| r).expect("upper has +v"))).collect();
+        let rec_lowers: Option<Vec<_>> = lowers
+            .iter()
+            .map(|i| {
+                let a = i
+                    .coeffs
+                    .iter()
+                    .find(|(n, _)| n == &v)
+                    .map(|(_, r)| r)
+                    .expect("lower has -v");
+                bound_expr(i, &v, a).map(|(coeffs, c)| (coeffs, c, i.strict))
+            })
+            .collect();
+        let rec_uppers: Option<Vec<_>> = uppers
+            .iter()
+            .map(|i| {
+                let a = i
+                    .coeffs
+                    .iter()
+                    .find(|(n, _)| n == &v)
+                    .map(|(_, r)| r)
+                    .expect("upper has +v");
+                bound_expr(i, &v, a).map(|(coeffs, c)| (coeffs, c, i.strict))
+            })
+            .collect();
         let (rec_lowers, rec_uppers) = match (rec_lowers, rec_uppers) {
             (Some(l), Some(u)) => (l, u),
             _ => return Err("arithmetic overflow recording bounds".into()),
         };
-        eliminations.push(Elimination { var: v.clone(), lowers: rec_lowers, uppers: rec_uppers });
+        eliminations.push(Elimination {
+            var: v.clone(),
+            lowers: rec_lowers,
+            uppers: rec_uppers,
+        });
 
         if pos_count == 0 || neg_count == 0 {
             // One-sidedly constrained: choosing an extreme value of `v`
@@ -249,18 +300,29 @@ fn fm_core(ineqs: &[Ineq]) -> Result<CoreOutcome, String> {
         //   −q·A + p·B  ≤  p·c2 − q·c1.
         let mut combined: Vec<Ineq> = Vec::with_capacity(uppers.len() * lowers.len());
         for u in &uppers {
-            let p = u.coeffs.iter().find(|(n, _)| n == &v).map(|(_, r)| *r).expect("upper has +v");
+            let p = u
+                .coeffs
+                .iter()
+                .find(|(n, _)| n == &v)
+                .map(|(_, r)| *r)
+                .expect("upper has +v");
             let c1 = u.c;
             for l in &lowers {
-                let q = l.coeffs.iter().find(|(n, _)| n == &v).map(|(_, r)| *r).expect("lower has -v");
+                let q = l
+                    .coeffs
+                    .iter()
+                    .find(|(n, _)| n == &v)
+                    .map(|(_, r)| *r)
+                    .expect("lower has -v");
                 let c2 = l.c;
 
                 let neg_q = match q.checked_neg() {
                     Some(x) => x,
                     None => return Err("arithmetic overflow combining bounds".into()),
                 };
-                let mut coeffs: Vec<(String, Rat)> = Vec::with_capacity(u.coeffs.len() + l.coeffs.len());
-                let mut put = |name: &str, val: Rat, coeffs: &mut Vec<(String, Rat)>| {
+                let mut coeffs: Vec<(String, Rat)> =
+                    Vec::with_capacity(u.coeffs.len() + l.coeffs.len());
+                let put = |name: &str, val: Rat, coeffs: &mut Vec<(String, Rat)>| {
                     if let Some(slot) = coeffs.iter_mut().find(|(n, _)| n == name) {
                         slot.1 = match slot.1.checked_add(val) {
                             Some(x) => x,
@@ -274,25 +336,43 @@ fn fm_core(ineqs: &[Ineq]) -> Result<CoreOutcome, String> {
                 let mut overflow = false;
                 for (name, r) in u.coeffs.iter().filter(|(n, _)| n != &v) {
                     match r.checked_mul(neg_q) {
-                        Some(x) if !overflow => { overflow |= !put(name, x, &mut coeffs); }
-                        _ => { overflow = true; }
+                        Some(x) if !overflow => {
+                            overflow |= !put(name, x, &mut coeffs);
+                        }
+                        _ => {
+                            overflow = true;
+                        }
                     }
                 }
                 for (name, r) in l.coeffs.iter().filter(|(n, _)| n != &v) {
                     match r.checked_mul(p) {
-                        Some(x) if !overflow => { overflow |= !put(name, x, &mut coeffs); }
-                        _ => { overflow = true; }
+                        Some(x) if !overflow => {
+                            overflow |= !put(name, x, &mut coeffs);
+                        }
+                        _ => {
+                            overflow = true;
+                        }
                     }
                 }
                 if overflow {
                     return Err("arithmetic overflow combining bounds".into());
                 }
-                let c_new =
-                    match p.checked_mul(c2).and_then(|x| x.checked_sub(q.checked_mul(c1)?)) {
-                        Some(x) => x,
-                        None => return Err("arithmetic overflow combining bounds".into()),
-                    };
-                combined.push(Ineq { coeffs, c: c_new, strict: u.strict || l.strict });
+                // Drop cancelling terms: a zero coefficient must not count as
+                // a mention of that variable (it would skew elimination
+                // heuristics and witness reconstruction).
+                coeffs.retain(|(_, r)| !r.is_zero());
+                let c_new = match p
+                    .checked_mul(c2)
+                    .and_then(|x| x.checked_sub(q.checked_mul(c1)?))
+                {
+                    Some(x) => x,
+                    None => return Err("arithmetic overflow combining bounds".into()),
+                };
+                combined.push(Ineq {
+                    coeffs,
+                    c: c_new,
+                    strict: u.strict || l.strict,
+                });
             }
         }
 
@@ -300,7 +380,9 @@ fn fm_core(ineqs: &[Ineq]) -> Result<CoreOutcome, String> {
         work.extend(combined);
 
         if work.len() > BLOWUP_LIMIT {
-            return Err(format!("elimination blow-up guard hit (> {BLOWUP_LIMIT} inequalities)"));
+            return Err(format!(
+                "elimination blow-up guard hit (> {BLOWUP_LIMIT} inequalities)"
+            ));
         }
     }
 }
@@ -325,21 +407,39 @@ fn reconstruct_witness(eliminations: &[Elimination]) -> Option<Model> {
             .collect::<Option<Vec<_>>>()?;
 
         let pick_lower = |vals: Vec<(Rat, bool)>| -> Option<Rat> {
-            vals.iter().try_fold(Rat::ZERO, |acc, &(v, _)| v.checked_cmp(acc).map(|o| if o == Ordering::Greater { v } else { acc }))
+            vals.iter()
+                .try_fold(Rat::ZERO, |acc, &(v, _)| {
+                    v.checked_cmp(acc)
+                        .map(|o| if o == Ordering::Greater { v } else { acc })
+                })
                 .map(|max| {
                     // Bump past the bound when any maximal lower is strict.
-                    let max_strict =
-                        vals.iter().any(|&(v, s)| s && v.checked_cmp(max) == Some(Ordering::Equal));
-                    if max_strict { max.checked_inc() } else { Some(max) }
+                    let max_strict = vals
+                        .iter()
+                        .any(|&(v, s)| s && v.checked_cmp(max) == Some(Ordering::Equal));
+                    if max_strict {
+                        max.checked_inc()
+                    } else {
+                        Some(max)
+                    }
                 })
                 .and_then(|x| x)
         };
         let pick_upper = |vals: Vec<(Rat, bool)>| -> Option<Rat> {
-            vals.iter().try_fold(Rat::ZERO, |acc, &(v, _)| v.checked_cmp(acc).map(|o| if o == Ordering::Less { v } else { acc }))
+            vals.iter()
+                .try_fold(Rat::ZERO, |acc, &(v, _)| {
+                    v.checked_cmp(acc)
+                        .map(|o| if o == Ordering::Less { v } else { acc })
+                })
                 .map(|min| {
-                    let min_strict =
-                        vals.iter().any(|&(v, s)| s && v.checked_cmp(min) == Some(Ordering::Equal));
-                    if min_strict { min.checked_dec() } else { Some(min) }
+                    let min_strict = vals
+                        .iter()
+                        .any(|&(v, s)| s && v.checked_cmp(min) == Some(Ordering::Equal));
+                    if min_strict {
+                        min.checked_dec()
+                    } else {
+                        Some(min)
+                    }
                 })
                 .and_then(|x| x)
         };
@@ -348,16 +448,38 @@ fn reconstruct_witness(eliminations: &[Elimination]) -> Option<Model> {
             (true, true) => {
                 // Raw extrema first: a rational midpoint between a smaller
                 // lower and larger upper satisfies every strictness pattern.
-                let raw_lo = lo_max
-                    .iter()
-                    .try_fold(Rat::ZERO, |acc, &(v, _)| {
-                        v.checked_cmp(acc).map(|o| if o == Ordering::Greater { v } else { acc })
-                    })?;
-                let raw_hi = hi_min
-                    .iter()
-                    .try_fold(Rat::ZERO, |acc, &(v, _)| {
-                        v.checked_cmp(acc).map(|o| if o == Ordering::Less { v } else { acc })
-                    })?;
+                // Neither fold may seed with `ZERO`: when every bound lies on
+                // one side of zero that sentinel is not itself a bound.
+                let mut raw_lo_acc: Option<Rat> = None;
+                for (v, _) in &lo_max {
+                    raw_lo_acc = Some(match raw_lo_acc {
+                        None => *v,
+                        Some(a) => {
+                            let ord = v.checked_cmp(a)?;
+                            if ord == Ordering::Greater {
+                                *v
+                            } else {
+                                a
+                            }
+                        }
+                    });
+                }
+                let mut raw_hi_acc: Option<Rat> = None;
+                for (v, _) in &hi_min {
+                    raw_hi_acc = Some(match raw_hi_acc {
+                        None => *v,
+                        Some(a) => {
+                            let ord = v.checked_cmp(a)?;
+                            if ord == Ordering::Less {
+                                *v
+                            } else {
+                                a
+                            }
+                        }
+                    });
+                }
+                let raw_lo = raw_lo_acc?;
+                let raw_hi = raw_hi_acc?;
                 match raw_lo.checked_cmp(raw_hi)? {
                     Ordering::Less => raw_lo.checked_midpoint(raw_hi)?,
                     // Equal bounds are fine unless some boundary is strict.
@@ -389,7 +511,11 @@ fn solve_leaf(cs: &[Constraint], original_for_check: &[Constraint]) -> Result<Ve
     let ineqs = match to_inequalities(cs) {
         Some(i) => i,
         // Only reachable if a caller bypasses the Ne splitter.
-        None => return Ok(Verdict::Unknown("constraint set contains != after splitting".into())),
+        None => {
+            return Ok(Verdict::Unknown(
+                "constraint set contains != after splitting".into(),
+            ))
+        }
     };
     match fm_core(&ineqs)? {
         CoreOutcome::Contradiction => Ok(Verdict::Unsat),
@@ -486,13 +612,11 @@ pub fn satisfies_model(cs: &[Constraint], m: &Model) -> bool {
 /// `premises` is unsatisfiable. Mirrors upstream `entails`.
 pub fn entails(premises: &[Constraint], conclusion: &Constraint) -> bool {
     use crate::ir::negate;
-    negate(conclusion)
-        .iter()
-        .all(|branch| {
-            let mut combined = premises.to_vec();
-            combined.extend(branch.iter().cloned());
-            unsat(&combined)
-        })
+    negate(conclusion).iter().all(|branch| {
+        let mut combined = premises.to_vec();
+        combined.extend(branch.iter().cloned());
+        unsat(&combined)
+    })
 }
 
 /// A counterexample to entailment: a model of `premises ∧ ¬conclusion`
@@ -506,4 +630,205 @@ pub fn counterexample(premises: &[Constraint], conclusion: &Constraint) -> Optio
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir::{Linear, Relation};
 
+    fn c(lin: Linear, rel: Relation) -> Constraint {
+        Constraint(lin, rel)
+    }
+
+    fn lin(s: &str, k: i64) -> Linear {
+        Linear::var(s).add(&Linear::constant_only(k))
+    }
+
+    #[test]
+    fn empty_system_is_satisfiable() {
+        assert!(matches!(decide(&[]), Ok(Verdict::Sat(_))));
+        assert!(!unsat(&[]));
+    }
+
+    #[test]
+    fn trivial_contradiction_constant_rows() {
+        // -1 <= 0 is satisfied; -1 >= 0 and 0 < 0 are violated.
+        assert!(matches!(
+            decide(&[c(Linear::constant_only(-1), Relation::Le)]),
+            Ok(Verdict::Sat(_))
+        ));
+        assert!(unsat(&[c(Linear::constant_only(-1), Relation::Ge)]));
+        assert!(unsat(&[c(Linear::constant_only(0), Relation::Lt)]));
+        assert!(matches!(
+            decide(&[c(Linear::constant_only(0), Relation::Le)]),
+            Ok(Verdict::Sat(_))
+        ));
+    }
+
+    #[test]
+    fn regression_satisfiable_ge_flip_not_reported_unsat() {
+        // x >= -1 and x <= 0 is satisfiable (x = -1/2). The ported
+        // to_inequalities once negated the flipped row's bound (giving
+        // `-x <= -1`, i.e. x >= 1) which made this system look UNSAT:
+        // `0 <= -1` was then also misjudged as contradictory by the old
+        // is_contradiction. Both were soundness bugs; fixed together.
+        let cs = [
+            c(lin("x", 1), Relation::Ge),
+            c(Linear::var("x"), Relation::Le),
+        ];
+        match decide(&cs) {
+            Ok(Verdict::Sat(m)) => assert!(satisfies_all(&cs, &m)),
+            other => panic!("expected SAT with verified witness, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn basic_bounds() {
+        // x >= 2 && x <= 5
+        let cs = [c(lin("x", -2), Relation::Ge), c(lin("x", -5), Relation::Le)];
+        assert!(!unsat(&cs));
+        let m = model(&cs).expect("satisfiable");
+        assert!(satisfies_all(&cs, &m));
+        let v = m["x"];
+        assert!(v.checked_cmp(Rat::from_i128(2)).unwrap() != Ordering::Less);
+        assert!(v.checked_cmp(Rat::from_i128(5)).unwrap() != Ordering::Greater);
+    }
+
+    #[test]
+    fn disjoint_bounds_are_unsat() {
+        let cs = [c(lin("x", -2), Relation::Ge), c(lin("x", -1), Relation::Le)];
+        assert_eq!(unsat_checked(&cs), Ok(true));
+    }
+
+    #[test]
+    fn strict_relations_are_exact() {
+        // x > 0 && x < 0
+        assert!(unsat(&[
+            c(Linear::var("x"), Relation::Gt),
+            c(Linear::var("x"), Relation::Lt),
+        ]));
+        // x > 2 && x < 2
+        assert!(unsat(&[
+            c(lin("x", -2), Relation::Gt),
+            c(lin("x", -2), Relation::Lt),
+        ]));
+        // x > 0 && x <= 1 admits rationals (e.g. 1/2).
+        let cs = [
+            c(Linear::var("x"), Relation::Gt),
+            c(lin("x", -1), Relation::Le),
+        ];
+        assert!(!unsat(&cs));
+        let m = model(&cs).expect("satisfiable");
+        assert!(satisfies_all(&cs, &m));
+    }
+
+    #[test]
+    fn equalities_are_checked() {
+        // x == 5 && y == 2*x - 3  →  x = 5, y = 7
+        let cs = [
+            c(lin("x", -5), Relation::Eq),
+            c(
+                Linear::var("y")
+                    .add(&Linear::var("x").checked_scale(-2).unwrap())
+                    .add(&Linear::constant_only(3)),
+                Relation::Eq,
+            ),
+        ];
+        let m = model(&cs).expect("satisfiable");
+        assert_eq!(m["y"], Rat::from_i128(7));
+        // x == 3 && x <= 2 is contradictory.
+        assert!(unsat(&[
+            c(lin("x", -3), Relation::Eq),
+            c(lin("x", -2), Relation::Le),
+        ]));
+    }
+
+    #[test]
+    fn ne_premises_split_into_branches() {
+        // x != 0 ∧ x == 0 ⇒ UNSAT
+        assert!(unsat(&[
+            c(Linear::var("x"), Relation::Ne),
+            c(Linear::var("x"), Relation::Eq),
+        ]));
+        // Bare x != 0 is satisfiable.
+        let cs = [c(Linear::var("x"), Relation::Ne)];
+        assert!(!unsat(&cs));
+        let m = model(&cs).expect("satisfiable");
+        assert!(satisfies_all(&cs, &m));
+        // x != 5 ∧ 0 <= x <= 5 ... x = 5/2 is a witness.
+        let cs = [
+            c(lin("x", -5), Relation::Ne),
+            c(Linear::var("x"), Relation::Ge),
+            c(lin("x", -5), Relation::Le),
+        ];
+        let m = model(&cs).expect("satisfiable");
+        assert!(satisfies_all(&cs, &m));
+    }
+
+    #[test]
+    fn two_variable_entailment() {
+        // ⌈premises: x + y <= 1, x >= 0, y >= 0⌉ does not entail x <= 0.
+        let premises = [
+            c(
+                Linear::var("x")
+                    .add(&Linear::var("y"))
+                    .add(&Linear::constant_only(-1)),
+                Relation::Le,
+            ),
+            c(Linear::var("x"), Relation::Ge),
+            c(Linear::var("y"), Relation::Ge),
+        ];
+        let x_le_0 = c(Linear::var("x"), Relation::Le);
+        assert!(!entails(&premises, &x_le_0));
+        let ce = counterexample(&premises, &x_le_0).expect("has counterexample");
+        assert!(satisfies_all(&premises, &ce));
+        assert!(!crate::ir::satisfies(&x_le_0, &ce));
+    }
+
+    #[test]
+    fn entails_trivial_consequences() {
+        // x <= 10 ⊢ x <= 11 ; x <= 10 ⊬ x <= 9
+        let premise = [c(lin("x", -10), Relation::Le)];
+        assert!(entails(&premise, &c(lin("x", -11), Relation::Le)));
+        assert!(!entails(&premise, &c(lin("x", -9), Relation::Le)));
+    }
+
+    #[test]
+    fn witness_and_unsat_on_mixed_system() {
+        // y <= 2x + 1, x <= 3, y >= 0 : satisfiable.
+        let cs = [
+            c(
+                Linear::var("y")
+                    .add(&Linear::var("x").checked_scale(-2).unwrap())
+                    .add(&Linear::constant_only(-1)),
+                Relation::Le,
+            ),
+            c(lin("x", -3), Relation::Le),
+            c(Linear::var("y"), Relation::Ge),
+        ];
+        let m = model(&cs).expect("satisfiable");
+        assert!(satisfies_all(&cs, &m));
+
+        // x + y <= 1, x >= 1, y >= 1 : UNSAT.
+        assert!(unsat(&[
+            c(
+                Linear::var("x")
+                    .add(&Linear::var("y"))
+                    .add(&Linear::constant_only(-1)),
+                Relation::Le
+            ),
+            c(lin("x", -1), Relation::Ge),
+            c(lin("y", -1), Relation::Ge),
+        ]));
+    }
+
+    #[test]
+    fn blowup_guard_is_conservative() {
+        // x != y among many != premises exceeds the split budget → Unknown,
+        // never a verdict claiming satisfiability or unsatisfiability.
+        let many = (0..10)
+            .map(|i| c(Linear::var(format!("v{i}")), Relation::Ne))
+            .collect::<Vec<_>>();
+        let verdict = decide(&many).expect("no hard error");
+        assert!(matches!(verdict, Verdict::Unknown(_)), "got {verdict:?}");
+    }
+}

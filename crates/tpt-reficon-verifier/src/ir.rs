@@ -9,6 +9,7 @@
 //! `Linear { terms, constant }`, `Relation::{Le,Lt,Ge,Gt,Eq,Ne}`,
 //! `Constraint(Linear, Relation)`.
 
+use core::cmp::Ordering;
 use core::fmt;
 use std::collections::BTreeMap;
 
@@ -62,12 +63,18 @@ pub struct Linear {
 impl Linear {
     /// The expression consisting of a single variable with coefficient 1.
     pub fn var(name: impl Into<String>) -> Linear {
-        Linear { terms: vec![(name.into(), 1)], constant: 0 }
+        Linear {
+            terms: vec![(name.into(), 1)],
+            constant: 0,
+        }
     }
 
     /// A constant-only expression.
     pub fn constant_only(v: i64) -> Linear {
-        Linear { terms: Vec::new(), constant: v }
+        Linear {
+            terms: Vec::new(),
+            constant: v,
+        }
     }
 
     /// True if the expression mentions no variables.
@@ -113,7 +120,10 @@ impl Linear {
         for (v, c) in &self.terms {
             terms.push((v.clone(), c.checked_mul(k)?));
         }
-        Some(Linear { terms, constant: self.constant.checked_mul(k)? })
+        Some(Linear {
+            terms,
+            constant: self.constant.checked_mul(k)?,
+        })
     }
 
     /// Evaluates the expression under a model. Panics on arithmetic overflow,
@@ -143,6 +153,27 @@ fn render_linear(terms: &[(String, i64)], constant: i64) -> String {
         if !s.is_empty() {
             s.push_str(if *c < 0 { " - " } else { " + " });
         } else if *c < 0 {
+            s.push('-');
+        }
+        let mag = c.unsigned_abs();
+        if mag != 1 || v.is_empty() {
+            s.push_str(&mag.to_string());
+            if !v.is_empty() {
+                s.push('*');
+            }
+        }
+        s.push_str(v);
+    }
+    if !s.is_empty() || constant != 0 {
+        if constant != 0 {
+            s.push_str(if constant < 0 { " - " } else { " + " });
+            s.push_str(&constant.unsigned_abs().to_string());
+        }
+    } else {
+        s.push('0');
+    }
+    s
+}
 
 /// One assertion: `lin (rel) 0`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -162,9 +193,17 @@ pub fn satisfies(constraint: &Constraint, model: &Model) -> bool {
     let value = constraint.0.eval(model);
     let zero = Rat::ZERO;
     match constraint.1 {
-        Relation::Le => matches!(value.checked_cmp(zero), Some(Ordering::Less) | None) || value == zero,
+        Relation::Le => match value.checked_cmp(zero) {
+            Some(o) => o != Ordering::Greater,
+            // Overflow: conservatively treat as satisfied (never a violation
+            // we cannot verify).
+            None => true,
+        },
         Relation::Lt => value.checked_cmp(zero) == Some(Ordering::Less),
-        Relation::Ge => matches!(value.checked_cmp(zero), Some(Ordering::Greater) | None) || value == zero,
+        Relation::Ge => match value.checked_cmp(zero) {
+            Some(o) => o != Ordering::Less,
+            None => true,
+        },
         Relation::Gt => value.checked_cmp(zero) == Some(Ordering::Greater),
         Relation::Eq => value == zero,
         Relation::Ne => value != zero,
@@ -199,7 +238,10 @@ pub fn negate(constraint: &Constraint) -> Vec<Vec<Constraint>> {
 
 /// Substitutes `var := expr` in a linear expression.
 fn substitute_linear(lin: &Linear, var: &str, expr: &Linear) -> Linear {
-    let mut out = Linear { terms: Vec::new(), constant: lin.constant };
+    let mut out = Linear {
+        terms: Vec::new(),
+        constant: lin.constant,
+    };
     for (v, c) in &lin.terms {
         if v == var {
             let scaled = expr.checked_scale(*c).expect("substitute scale overflow");
@@ -213,6 +255,16 @@ fn substitute_linear(lin: &Linear, var: &str, expr: &Linear) -> Linear {
 
 /// Rewrites every constraint using the equality `lhs_var == rhs` to eliminate
 /// the variable occurrence, mirroring upstream `equality_substitute`.
+pub fn equality_substitute(
+    constraints: &[Constraint],
+    lhs_var: &str,
+    rhs: &Linear,
+) -> Vec<Constraint> {
+    constraints
+        .iter()
+        .map(|Constraint(lin, rel)| Constraint(substitute_linear(lin, lhs_var, rhs), *rel))
+        .collect()
+}
 
 #[cfg(test)]
 mod tests {
@@ -234,7 +286,10 @@ mod tests {
     fn eval_and_satisfies() {
         // 2*x + 10 <= 0  at x = -5  → 0 <= 0 ✓
         let c = Constraint(
-            Linear::var("x").checked_scale(2).unwrap().add(&Linear::constant_only(10)),
+            Linear::var("x")
+                .checked_scale(2)
+                .unwrap()
+                .add(&Linear::constant_only(10)),
             Relation::Le,
         );
         let mut m = Model::new();
@@ -250,15 +305,17 @@ mod tests {
         let eq = Constraint(Linear::var("x"), Relation::Eq);
         assert_eq!(negate(&eq).len(), 2);
         let ne = Constraint(Linear::var("x"), Relation::Ne);
-        assert_eq!(negate(&ne), vec![vec![Constraint(Linear::var("x"), Relation::Eq)]]);
+        assert_eq!(
+            negate(&ne),
+            vec![vec![Constraint(Linear::var("x"), Relation::Eq)]]
+        );
     }
 
     #[test]
     fn substitute_removes_variable() {
         // x == y + 1 ; constraint x >= 0 becomes y + 1 >= 0
         let cs = [Constraint(Linear::var("x"), Relation::Ge)];
-        let out =
-            equality_substitute(&cs, "x", &Linear::var("y").add(&Linear::constant_only(1)));
+        let out = equality_substitute(&cs, "x", &Linear::var("y").add(&Linear::constant_only(1)));
         assert_eq!(out[0].0, Linear::var("y").add(&Linear::constant_only(1)));
     }
 
@@ -266,36 +323,10 @@ mod tests {
     fn render_examples() {
         assert_eq!(Linear::constant_only(0).render(), "0");
         assert_eq!(Linear::var("value").render(), "value");
-        let l = Linear::var("x").checked_scale(-1).unwrap().add(&Linear::constant_only(-4));
-        assert_eq!(l.render(), "-1*x - 4");
+        let l = Linear::var("x")
+            .checked_scale(-1)
+            .unwrap()
+            .add(&Linear::constant_only(-4));
+        assert_eq!(l.render(), "-x - 4");
     }
-}
-
-pub fn equality_substitute(constraints: &[Constraint], lhs_var: &str, rhs: &Linear) -> Vec<Constraint> {
-    constraints
-        .iter()
-        .map(|Constraint(lin, rel)| Constraint(substitute_linear(lin, lhs_var, rhs), *rel))
-        .collect()
-}
-
-            s.push('-');
-        }
-        let mag = c.unsigned_abs();
-        if mag != 1 || v.is_empty() {
-            s.push_str(&mag.to_string());
-            if !v.is_empty() {
-                s.push('*');
-            }
-        }
-        s.push_str(v);
-    }
-    if !s.is_empty() || constant != 0 {
-        if constant != 0 {
-            s.push_str(if constant < 0 { " - " } else { " + " });
-            s.push_str(&constant.unsigned_abs().to_string());
-        }
-    } else {
-        s.push('0');
-    }
-    s
 }
