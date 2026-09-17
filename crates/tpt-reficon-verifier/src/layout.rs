@@ -28,8 +28,11 @@ pub struct Alignment(u32);
 impl Alignment {
     /// The trivial `alignof(())` = 1.
     pub const BYTE: Alignment = Alignment(1);
+    /// Two-byte alignment (`alignof(u16)`).
     pub const WORD: Alignment = Alignment(2);
+    /// Four-byte alignment (`alignof(u32)`).
     pub const DWORD: Alignment = Alignment(4);
+    /// Eight-byte alignment (`alignof(u64)`).
     pub const QWORD: Alignment = Alignment(8);
 
     /// Returns `None` when `bytes` is not a positive power of two.
@@ -146,32 +149,59 @@ pub enum LayoutMismatch {
     /// A value needed by the QF_LRA engine exceeds its `i64` range.
     OutOfSolverRange(String),
     /// The two structs have different field counts.
-    FieldCountMismatch { rust: usize, foreign: usize },
+    FieldCountMismatch {
+        /// Field count on the Rust side.
+        rust: usize,
+        /// Field count on the foreign side.
+        foreign: usize,
+    },
     /// Fields at the same index have different names.
     FieldNameMismatch {
+        /// Position of the mismatching field.
         index: usize,
+        /// Name on the Rust side.
         rust: String,
+        /// Name on the foreign side.
         foreign: String,
     },
     /// A field sits at different offsets.
     OffsetMismatch {
+        /// Position of the mismatching field.
         index: usize,
+        /// Offset on the Rust side, in bytes.
         rust: u64,
+        /// Offset on the foreign side, in bytes.
         foreign: u64,
     },
     /// A field has a different size.
     FieldSizeMismatch {
+        /// Position of the mismatching field.
         index: usize,
+        /// Size on the Rust side, in bytes.
         rust: u64,
+        /// Size on the foreign side, in bytes.
         foreign: u64,
     },
     /// The structs have different alignment.
-    AlignmentMismatch { rust: u32, foreign: u32 },
+    AlignmentMismatch {
+        /// Alignment on the Rust side, in bytes.
+        rust: u32,
+        /// Alignment on the foreign side, in bytes.
+        foreign: u32,
+    },
     /// The structs have different total size.
-    StructSizeMismatch { rust: u64, foreign: u64 },
+    StructSizeMismatch {
+        /// Total size on the Rust side, in bytes.
+        rust: u64,
+        /// Total size on the foreign side, in bytes.
+        foreign: u64,
+    },
     /// A field's extent (Solver proof) extends past the struct or overlaps
     /// the following field.
-    ExtentExceedsStruct { index: usize },
+    ExtentExceedsStruct {
+        /// Position of the offending field.
+        index: usize,
+    },
 }
 
 impl core::fmt::Display for LayoutMismatch {

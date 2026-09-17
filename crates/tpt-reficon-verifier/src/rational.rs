@@ -102,14 +102,17 @@ impl Rat {
         self.d
     }
 
+    /// True iff the value is exactly zero.
     pub fn is_zero(&self) -> bool {
         self.n == 0
     }
 
+    /// True iff the value is strictly greater than zero.
     pub fn is_positive(&self) -> bool {
         self.n > 0
     }
 
+    /// True iff the value is strictly less than zero.
     pub fn is_negative(&self) -> bool {
         self.n < 0
     }
@@ -129,10 +132,12 @@ impl Rat {
         Rat::new(n, d)
     }
 
+    /// Exact subtraction, checked for overflow.
     pub fn checked_sub(self, rhs: Rat) -> Option<Rat> {
         self.checked_add(rhs.checked_neg()?)
     }
 
+    /// Exact negation, checked for overflow.
     pub fn checked_neg(self) -> Option<Rat> {
         Some(Rat {
             n: self.n.checked_neg()?,
@@ -140,6 +145,7 @@ impl Rat {
         })
     }
 
+    /// Exact multiplication, checked for overflow.
     pub fn checked_mul(self, rhs: Rat) -> Option<Rat> {
         Rat::new(self.n.checked_mul(rhs.n)?, self.d.checked_mul(rhs.d)?)
     }

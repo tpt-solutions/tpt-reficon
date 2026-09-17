@@ -7,6 +7,7 @@
 //! the [`prelude`] re-exported by the `tpt-reficon` facade crate.
 
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 
 use core::fmt;
 

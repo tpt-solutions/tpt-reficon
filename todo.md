@@ -68,7 +68,7 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 - [x] Property-based tests (proptest) for solver + macro-generated checks
 - [ ] Compile-time overhead benchmarking (macro expansion + verifier latency)
 - [ ] Fuzz testing the FFI header parser
-- [ ] Full workspace clippy/fmt/MSRV gates enforced in CI (ties back to Phase 0 CI)
+- [x] Full workspace clippy/fmt/MSRV gates enforced in CI (ties back to Phase 0 CI), plus example build/run
 
 ## Phase 8 — Documentation
 - [ ] rustdoc on all public items across crates

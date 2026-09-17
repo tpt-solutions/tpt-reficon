@@ -61,6 +61,30 @@ fn last_segment_ident(ty: &Type) -> Option<String> {
     path.segments.last().map(|s| s.ident.to_string())
 }
 
+/// True when `ty` is one of Rust's primitive integer types.
+///
+/// Only these may have their runtime predicate widened to `i128` (see
+/// `expand.rs`); widening a float or a custom type would change the
+/// predicate's arithmetic, so those keep evaluating in the inner type.
+pub fn is_supported_integer(ty: &Type) -> bool {
+    matches!(
+        last_segment_ident(ty).as_deref(),
+        Some(
+            "u8" | "u16"
+                | "u32"
+                | "u64"
+                | "u128"
+                | "usize"
+                | "i8"
+                | "i16"
+                | "i32"
+                | "i64"
+                | "i128"
+                | "isize"
+        )
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use syn::parse_quote;

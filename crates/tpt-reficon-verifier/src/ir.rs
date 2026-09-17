@@ -126,18 +126,26 @@ impl Linear {
         })
     }
 
+    /// Evaluates the expression under a model.
+    ///
+    /// Returns `None` if any intermediate multiply or add overflows the
+    /// rational's `i128` storage. Callers must treat this as "cannot verify"
+    /// (never as a violation), mirroring the checked-arithmetic policy of the
+    /// rest of the solver.
+    pub fn checked_eval(&self, model: &Model) -> Option<Rat> {
+        let mut acc = Rat::from_i128(self.constant as i128);
+        for (v, c) in &self.terms {
+            let val = model.get(v).copied().unwrap_or(Rat::ZERO);
+            acc = acc.checked_add(val.checked_scale(*c as i128)?)?;
+        }
+        Some(acc)
+    }
+
     /// Evaluates the expression under a model. Panics on arithmetic overflow,
     /// which cannot happen for models produced by this crate on systems that
     /// passed construction-time checks.
     pub fn eval(&self, model: &Model) -> Rat {
-        let mut acc = Rat::from_i128(self.constant as i128);
-        for (v, c) in &self.terms {
-            let val = model.get(v).copied().unwrap_or(Rat::ZERO);
-            acc = acc
-                .checked_add(val.checked_scale(*c as i128).expect("linear eval overflow"))
-                .expect("linear eval overflow");
-        }
-        acc
+        self.checked_eval(model).expect("linear eval overflow")
     }
 
     /// Renders in human-readable form for diagnostics, e.g. `3*x - y + 7`.
@@ -164,13 +172,17 @@ fn render_linear(terms: &[(String, i64)], constant: i64) -> String {
         }
         s.push_str(v);
     }
-    if !s.is_empty() || constant != 0 {
+    if s.is_empty() {
+        // Constant-only expression (or all-zero terms): render the sign
+        // attached, e.g. "-3", never " - 3".
         if constant != 0 {
-            s.push_str(if constant < 0 { " - " } else { " + " });
-            s.push_str(&constant.unsigned_abs().to_string());
+            s.push_str(&constant.to_string());
+        } else {
+            s.push('0');
         }
-    } else {
-        s.push('0');
+    } else if constant != 0 {
+        s.push_str(if constant < 0 { " - " } else { " + " });
+        s.push_str(&constant.unsigned_abs().to_string());
     }
     s
 }
@@ -190,7 +202,12 @@ pub type Model = BTreeMap<String, Rat>;
 
 /// Checks whether `lin (rel) 0` holds under `model`.
 pub fn satisfies(constraint: &Constraint, model: &Model) -> bool {
-    let value = constraint.0.eval(model);
+    // Evaluation overflow must never turn into a "violated" verdict: that
+    // would let an adversarial model force an UNSAT report. Conservatively
+    // treat overflow as satisfied (cannot prove a violation).
+    let Some(value) = constraint.0.checked_eval(model) else {
+        return true;
+    };
     let zero = Rat::ZERO;
     match constraint.1 {
         Relation::Le => match value.checked_cmp(zero) {
@@ -322,11 +339,30 @@ mod tests {
     #[test]
     fn render_examples() {
         assert_eq!(Linear::constant_only(0).render(), "0");
+        assert_eq!(Linear::constant_only(7).render(), "7");
+        assert_eq!(Linear::constant_only(-3).render(), "-3");
         assert_eq!(Linear::var("value").render(), "value");
         let l = Linear::var("x")
             .checked_scale(-1)
             .unwrap()
             .add(&Linear::constant_only(-4));
         assert_eq!(l.render(), "-x - 4");
+    }
+
+    #[test]
+    fn eval_overflow_is_conservative_not_panicking() {
+        // An adversarial model with an i128::MAX value must not make
+        // `satisfies` panic; it must degrade to "satisfied" (cannot verify).
+        let c = Constraint(
+            Linear::var("x").add(&Linear::constant_only(1)),
+            Relation::Le,
+        );
+        let mut m = Model::new();
+        m.insert("x".to_string(), Rat::from_i128(i128::MAX));
+        assert!(satisfies(&c, &m));
+        assert!(satisfies_all(&[c], &m));
+        let c2 = Constraint(Linear::var("x"), Relation::Eq); // `x == 0`
+                                                             // No overflow here: x == MAX ≠ 0 must be a clean, non-panicking false.
+        assert!(!satisfies(&c2, &m));
     }
 }

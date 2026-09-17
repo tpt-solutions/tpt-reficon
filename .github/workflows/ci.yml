@@ -43,6 +43,16 @@ jobs:
       - name: Run tests
         run: cargo test --workspace
 
+  examples:
+    name: examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+      - uses: Swatinem/rust-cache@v2
+      - name: Build and run examples
+        run: cargo run --workspace --example refinement_types
+
   msrv:
     name: "MSRV (1.75.0)"
     runs-on: ubuntu-latest

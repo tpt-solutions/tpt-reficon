@@ -75,6 +75,12 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
     let message = format!("refinement `{render}` must hold for `{name}`");
     let msg_literal = syn::LitStr::new(&message, Span::call_site());
 
+    // Integer inner types evaluate the runtime predicate in `i128`: the solver
+    // reasons over ℚ/i64, and evaluating in the narrow inner type (e.g. u8)
+    // would panic in debug / wrap in release on overflow — a guarantee the
+    // derive must not ship. Non-integer types keep their native arithmetic.
+    let widen_to_i128 = domain::is_supported_integer(inner_ty);
+
     let (new_fn, try_new_fn) = if elided {
         (
             quote! {
@@ -90,6 +96,41 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
                 #[doc = "Always `Ok` — the refinement was proven by the type's domain at compile time."]
                 pub fn try_new(value: #inner_ty) -> ::core::result::Result<Self, #core::RefinementError> {
                     ::core::result::Result::Ok(#field_constructor)
+                }
+            },
+        )
+    } else if widen_to_i128 {
+        (
+            quote! {
+                #[allow(dead_code)]
+                #[doc = "Constructs a refined value, panicking if it violates the refinement. \
+                         The check is elided only where the verifier proved it redundant."]
+                pub fn new(value: #inner_ty) -> Self {
+                    if {
+                        // The inner binding shadows the parameter inside the
+                        // condition only; `value` remains the original inner
+                        // value for the constructor.
+                        let #variable: i128 = value as i128;
+                        #runtime_check
+                    } {
+                        #field_constructor
+                    } else {
+                        ::core::panic!("{}", #msg_literal)
+                    }
+                }
+            },
+            quote! {
+                #[allow(dead_code)]
+                #[doc = "Constructs a refined value, returning an error on violation."]
+                pub fn try_new(value: #inner_ty) -> ::core::result::Result<Self, #core::RefinementError> {
+                    if {
+                        let #variable: i128 = value as i128;
+                        #runtime_check
+                    } {
+                        ::core::result::Result::Ok(#field_constructor)
+                    } else {
+                        ::core::result::Result::Err(#core::RefinementError::with_message(#msg_literal))
+                    }
                 }
             },
         )

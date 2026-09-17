@@ -33,6 +33,21 @@ pub struct Five(u8);
 #[requires(value <= 255)]
 pub struct Byte(u8);
 
+/// Arithmetic-heavy predicate that *overflows* if evaluated in `u8`: the
+/// derive must evaluate it in `i128` so `value + 200` never panics (debug) or
+/// wraps (release). Semantics: `value < 100`.
+#[derive(RefineMacro)]
+#[requires(value + 200 < 300)]
+pub struct UnderHundred(u8);
+
+/// Same guarantee via the named-field + custom-variable path.
+#[derive(RefineMacro)]
+#[refine(variable = "x")]
+#[requires(x + 200 < 300)]
+pub struct TightRange {
+    x: u8,
+}
+
 proptest! {
     #![proptest_config(ProptestConfig { cases: 256, ..ProptestConfig::default() })]
 
@@ -69,5 +84,25 @@ proptest! {
         let b = Byte::new(v); // elided `new` must never panic
         prop_assert_eq!(*b, v);
         prop_assert_eq!(b.into_inner(), v);
+    }
+
+    #[test]
+    fn widened_i128_check_never_overflows(v in any::<u8>()) {
+        // `value + 200` would overflow u8 for v > 55; evaluating in i128 it
+        // must neither panic nor wrap, and agree with the ℚ semantics v < 100.
+        let should_hold = (v as i128) + 200 < 300;
+        prop_assert_eq!(
+            UnderHundred::try_new(v).is_ok(),
+            should_hold,
+            "widened check mismatch at value {}",
+            v
+        );
+        let named_should_hold = (v as i128) + 200 < 300;
+        prop_assert_eq!(
+            TightRange::try_new(v).is_ok(),
+            named_should_hold,
+            "widened named-field check mismatch at value {}",
+            v
+        );
     }
 }

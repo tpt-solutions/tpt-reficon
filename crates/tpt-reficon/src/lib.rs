@@ -18,11 +18,14 @@
 //! project pitch and runnable examples.
 
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 
 /// Re-export of the runtime crate so macro-generated code can resolve
 /// `tpt_reficon::core::*` regardless of dependency renames.
 pub use tpt_reficon_core as core;
 
+/// One-import front door: `use tpt_reficon::prelude::*;` brings in the derive
+/// macro and the runtime types.
 pub mod prelude {
     /// The `Refine` trait (type namespace).
     #[doc(hidden)]

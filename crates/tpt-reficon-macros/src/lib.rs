@@ -12,6 +12,8 @@
 //!   domain already implies are compiled out entirely (zero-cost elision);
 //!   everything else gets an exact runtime check in `new` / `try_new`.
 
+#![warn(missing_docs)]
+
 extern crate proc_macro;
 
 mod attrs;

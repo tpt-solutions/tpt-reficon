@@ -22,6 +22,8 @@
 //! See the crate-level `CHANGELOG.md`/"NOTICE" at the workspace root for
 //! attribution of the ported code.
 
+#![warn(missing_docs)]
+
 pub mod ir;
 pub mod layout;
 pub mod rational;

@@ -32,10 +32,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `trybuild` UI tests covering elided and runtime-checked refinements and
   compile-fail diagnostics (unsatisfiable, unknown variable, nonlinear,
   multi-field, generic).
+- Property-based tests: `solver_soundness` (a brute-force rational-grid oracle
+  asserts `unsat` never reports a satisfiable system UNSAT, returned models are
+  verified witnesses, and entails-respects-countermodels) and macro
+  `runtime_checks` (generated `try_new` verdicts vs. plain-Rust predicate
+  semantics).
+- Runnable example crate (`crates/tpt-reficon/examples/refinement_types.rs`),
+  built and executed in CI.
+- `#![warn(missing_docs)]` across all crates.
 - GitHub Actions CI: fmt check, clippy `-D warnings`, `cargo test --workspace`,
-  and an MSRV (1.75.0) build job.
+  examples run, and an MSRV (1.75.0) build job.
 
 ### Fixed
+- `tpt-reficon-verifier.ir.satisfies`: evaluation overflow now degrades
+  conservatively to "satisfied" instead of panicking. An adversarial model
+  (e.g. an `i128::MAX` value) could previously panic the constraint check used
+  to *verify* solver witnesses; it can never turn an overflow into a spurious
+  UNSAT.
+- `tpt-reficon-macros`: runtime predicates on primitive integer inner types are
+  now evaluated in `i128` rather than in the (narrow) inner type. A predicate
+  like `value + 200 < 300` on `u8` previously panicked in debug builds and
+  silently wrapped (changing its verdict) in release builds; it now agrees with
+  the solver's ℚ reasoning and can never overflow.
+- `tpt-reficon-verifier.ir.render`: a constant-only linear expression rendered
+  with a leading separator (`" - 3"`, `" + 3"`); it now renders `"-3"`.
 - `tpt-reficon-verifier.solver.is_contradiction`: the `Ordering::Greater` arm
   returned `false` (satisfiable) — misclassifying the genuine contradiction
   `0 <= -1` as satisfiable. This made the solver report UNSAT as SAT for
