@@ -81,7 +81,9 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 - [x] Property-based tests (proptest) for solver + macro-generated checks
 - [x] Adversarial-model hardening: `satisfies`/eval overflow is conservative and
       never panics (review 2026-09, committed as `a83e72c`)
-- [ ] Compile-time overhead benchmarking (macro expansion + verifier latency)
+- [x] Compile-time overhead benchmarking (verifier latency micro-benchmarks in
+      `crates/tpt-reficon-verifier/benches/solver.rs`; macro-expansion overhead
+      deferred to a `cargo build --timings`-style harness — noted in the bench doc)
 - [ ] Fuzz testing the FFI header parser
 - [x] Full workspace clippy/fmt/MSRV gates enforced in CI (ties back to Phase 0 CI), plus example build/run
 - [ ] CI supply-chain scanning (`cargo audit` / `cargo deny`): vulnerability,

@@ -25,3 +25,7 @@ z3-reserved = []
 
 [dev-dependencies]
 proptest = "1"
+
+[[bench]]
+name = "solver"
+harness = false

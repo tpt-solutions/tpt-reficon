@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   always-panicking constructors. The analysis is conservative (an extra
   variable, or arithmetic overflow, keeps the runtime check) and is verified
   against a brute-force witness oracle by property tests.
+- `tpt-reficon-verifier`: dependency-free `cargo bench` micro-benchmarks for the
+  decision procedure (`crates/tpt-reficon-verifier/benches/solver.rs`) — solver
+  latency on representative shapes (bounds, `!=` splitting and its budget,
+  equality chains, multi-variable Fourier–Motzkin, unsat/degenerate systems).
 - `tpt-reficon-core`: `Refine` trait and the `RefinementError` runtime-check
   error type (no allocation, usable in `no_std`-adjacent contexts).
 - `tpt-reficon`: facade crate re-exporting `prelude::*` (trait + derive macro
