@@ -37,6 +37,17 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 - [x] Diagnostics: span-accurate compile errors for unprovable/malformed predicates
 - [x] `trybuild` tests: expansion snapshots + compile-fail cases
 
+### Frontend hardening (review 2026-09)
+- [x] Runtime checks on integer primitives evaluate in `i128` — solver-consistent,
+      no debug panics or release wrap for narrow types (e.g. `value + 200 < 300` on `u8`)
+- [ ] Support `||` (disjunction) in predicates: lower to DNF branches, case-split
+      through the solver, branch-wise elision/entailment (e.g. `value == 0 || value == 1`)
+- [ ] Integer-domain (ℤ) completeness: catch predicates with no *integral* solution
+      (e.g. `2*value == 1` on `u8`) at compile time instead of an always-panicking
+      runtime check (today the solver decides over ℚ; see README "Soundness notes")
+- [ ] Real `ensures` post-state semantics (post-condition on the constructed value);
+      today `ensures` is treated as an additional `requires`
+
 ## Phase 3 — Core Runtime Crate (`tpt-reficon-core`)
 - [x] Create `crates/tpt-reficon-core` crate
 - [x] `Refine` trait + runtime-check error types
@@ -66,13 +77,20 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 
 ## Phase 7 — Testing & Quality
 - [x] Property-based tests (proptest) for solver + macro-generated checks
+- [x] Adversarial-model hardening: `satisfies`/eval overflow is conservative and
+      never panics (review 2026-09, committed as `a83e72c`)
 - [ ] Compile-time overhead benchmarking (macro expansion + verifier latency)
 - [ ] Fuzz testing the FFI header parser
 - [x] Full workspace clippy/fmt/MSRV gates enforced in CI (ties back to Phase 0 CI), plus example build/run
+- [ ] CI supply-chain scanning (`cargo audit` / `cargo deny`): vulnerability,
+      license, and dep-version policy gates in CI (adoption/security)
 
 ## Phase 8 — Documentation
-- [ ] rustdoc on all public items across crates
+- [x] `#![warn(missing_docs)]` enforced on every public item across all crates
+      (gate landed with review 2026-09, committed as `a83e72c`)
 - [ ] User guide (mdBook or docs.rs long-form docs): refinement types, FFI contracts, fractional borrows
+- [x] Runnable tour example (`crates/tpt-reficon/examples/refinement_types.rs`) wired
+      into CI, referenced from README
 - [ ] Expand README with runnable examples from spec.txt section 4
 - [ ] Positioning doc: comparison vs. `bindgen`, `cbindgen`, `proptest`
 
