@@ -1,0 +1,37 @@
+# Supply-chain policy for tpt-reficon (checked by `cargo deny`, run in CI via
+# EmbarkStudios/cargo-deny-action; config targets the v2 `[licenses]`/`[advisories]`
+# semantics, cargo-deny >= 0.16). Covers, in one pass:
+#
+#   * advisories — security vulnerabilities published to the RustSec advisory
+#     database;
+#   * bans       — crate/version policy (wildcards, duplicate versions);
+#   * licenses   — SPDX license allow-list for the full dependency graph;
+#   * sources    — only crates.io and the local workspace.
+
+[advisories]
+# v2 semantics: `vulnerability` / `unmaintained` / `unsound` / `notice` all
+# default to `deny` across the full graph ("all"). `yanked` versions are a
+# warning: legal to keep in the lockfile but flagged for prompt refresh.
+yanked = "warn"
+
+[bans]
+# Duplicate versions are allowed to warn: the graph legitimately contains two
+# major lines of transitive dev-dependencies (getrandom 0.3/0.4, r-efi 5/6).
+multiple-versions = "warn"
+wildcards = "deny"
+
+[licenses]
+# Allow-list of SPDX license identifiers actually relied on by the dependency
+# graph (the workspace itself is MIT OR Apache-2.0). Anything not listed is
+# denied under v2 semantics. Keep this list tight: a new dependency with a new
+# license fails CI here and forces an explicit review.
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "Unicode-3.0",
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = []

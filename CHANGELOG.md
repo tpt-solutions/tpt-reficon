@@ -102,6 +102,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-house and does not consume SMT-LIB2, the proc-macro frontend targets the
   internal constraint IR directly (see `tpt-reficon-verifier` docs).
 
+### Security
+- Supply-chain scanning gate: `deny.toml` plus a `cargo-deny` CI job enforce
+  RustSec advisory checks, a wildcard-dep ban, and an explicit SPDX license
+  allow-list over the full dependency graph (default-deny v2 semantics). Run
+  locally with `cargo deny check`; adding a dependency takes its license
+  through an explicit review.
+- Workspace-internal path dependencies now pin `version = "0.1.0"` (publish
+  readiness and required to satisfy the wildcard ban).
+
 ### Attribution
 - The Fourier–Motzkin decision procedure, exact integer-ratio arithmetic, and
   the memory-layout proof logic are ported/adapted from TPT Solutions'

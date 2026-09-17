@@ -86,8 +86,10 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
       deferred to a `cargo build --timings`-style harness — noted in the bench doc)
 - [ ] Fuzz testing the FFI header parser
 - [x] Full workspace clippy/fmt/MSRV gates enforced in CI (ties back to Phase 0 CI), plus example build/run
-- [ ] CI supply-chain scanning (`cargo audit` / `cargo deny`): vulnerability,
-      license, and dep-version policy gates in CI (adoption/security)
+- [x] CI supply-chain scanning (`deny.toml` + `cargo-deny` job): RustSec
+      advisories, wildcard ban, and an explicit SPDX license allow-list over
+      the whole dependency graph (v2 default-deny semantics); local
+      `cargo deny check` documented in CONTRIBUTING.md
 
 ## Phase 8 — Documentation
 - [x] `#![warn(missing_docs)]` enforced on every public item across all crates

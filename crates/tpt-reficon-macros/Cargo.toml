@@ -19,12 +19,12 @@ proc-macro = true
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full", "extra-traits"] }
-tpt-reficon-verifier = { path = "../tpt-reficon-verifier" }
+tpt-reficon-verifier = { version = "0.1.0", path = "../tpt-reficon-verifier" }
 # Needed so generated code references the runtime crate under whatever name
 # the user's Cargo.toml actually uses (e.g. a renamed `tpt-reficon-core`).
 proc-macro-crate = "3"
 
 [dev-dependencies]
 trybuild = "1"
-tpt-reficon-core = { path = "../tpt-reficon-core" }
+tpt-reficon-core = { version = "0.1.0", path = "../tpt-reficon-core" }
 proptest = "1"

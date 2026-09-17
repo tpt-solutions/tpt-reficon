@@ -15,8 +15,8 @@ documentation = "https://docs.rs/tpt-reficon"
 workspace = true
 
 [dependencies]
-tpt-reficon-core = { path = "../tpt-reficon-core" }
-tpt-reficon-macros = { path = "../tpt-reficon-macros" }
+tpt-reficon-core = { version = "0.1.0", path = "../tpt-reficon-core" }
+tpt-reficon-macros = { version = "0.1.0", path = "../tpt-reficon-macros" }
 
 [features]
 default = []

@@ -41,6 +41,11 @@ without updating the MSRV policy deliberately.
    `proc-macro2`, `quote`, and `syn`. Justify any addition in your PR.
 5. **Format and lint:** run `cargo fmt --all` and `cargo clippy --workspace
    --all-targets -- -D warnings` before pushing.
+6. **Supply chain:** run `cargo deny check` (install with `cargo install
+   cargo-deny`) before pushing. CI runs the same check via `deny.toml`, which
+   gates security advisories and the SPDX license allow-list for the whole
+   dependency graph; adding a dependency with a new license requires updating
+   that allow-list deliberately in the same PR.
 
 ## Commit / PR conventions
 
