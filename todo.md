@@ -44,9 +44,9 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
       satisfiability (a disjunction is UNSAT only when every alternative is) and
       elided when the domain proves an alternative (e.g. `value == 0 || value == 1`,
       or `value <= 3 || value <= 255` on `u8`); branch cap guards blow-up
-- [ ] Integer-domain (ℤ) completeness: catch predicates with no *integral* solution
-      (e.g. `2*value == 1` on `u8`) at compile time instead of an always-panicking
-      runtime check (today the solver decides over ℚ; see README "Soundness notes")
+- [x] Integer-domain (ℤ) completeness: exact single-variable integer-feasibility
+      per alternative, intersected with the type domain — catches `value > 5 && value < 6`
+      and `value > 255` on `u8` at compile time (conservative; brute-force-oracle proptest)
 - [ ] Real `ensures` post-state semantics (post-condition on the constructed value);
       today `ensures` is treated as an additional `requires`
 

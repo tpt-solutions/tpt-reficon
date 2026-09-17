@@ -103,13 +103,14 @@ struct NonNegativeU64(u64);
 
 ## Soundness notes
 
-- **Decision procedure is over ℚ (rationals), not ℤ.** For refinement types on
-  integer primitives this is *sound* (if no rational solution exists, no
-  integer one does either) but not *complete*: a refinement that is
-  rational-satisfiable yet integer-empty (e.g. `2*value == 1` on `u8`) is not
-  caught at compile time and instead behaves as an always-panicking runtime
-  check. When unsure, write predicates whose rational and integer solutions
-  coincide (e.g. `value < 100`).
+- **The solver decides over ℚ; the derive adds exact ℤ/domain checks for
+  single-variable predicates.** The verifier's Fourier–Motzkin engine is exact
+  over the rationals. For primitive integer inner types, `#[derive(Refine)]`
+  additionally runs an exact single-variable integer-feasibility analysis per
+  alternative, intersected with the type's domain, so rational-only refinements
+  (`value > 5 && value < 6`, or `value > 255` on `u8`) are **compile errors**
+  rather than always-panicking constructors. The verifier's own API remains a
+  ℚ decision procedure.
 - **Runtime checks are widened to `i128`.** Predicates on integer primitives
   must agree with the solver's reasoning, so the derive evaluates them in
   `i128` — never in the narrow inner type, where arithmetic could panic in

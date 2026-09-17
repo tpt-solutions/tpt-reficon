@@ -31,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   proves some alternative (e.g. `value <= 3 || value <= 255` on `u8`). A
   pathological disjunction/conjunction expansion is rejected with a
   span-accurate error rather than expanding without bound.
+- `tpt-reficon-macros`: exact single-variable integer-feasibility analysis for
+  primitive integer inner types. Refinements that are rational-satisfiable but
+  have no integer value in the type's domain — `value > 5 && value < 6`, or
+  `value > 255` / `value < 0` on `u8` — are now compile errors rather than
+  always-panicking constructors. The analysis is conservative (an extra
+  variable, or arithmetic overflow, keeps the runtime check) and is verified
+  against a brute-force witness oracle by property tests.
 - `tpt-reficon-core`: `Refine` trait and the `RefinementError` runtime-check
   error type (no allocation, usable in `no_std`-adjacent contexts).
 - `tpt-reficon`: facade crate re-exporting `prelude::*` (trait + derive macro

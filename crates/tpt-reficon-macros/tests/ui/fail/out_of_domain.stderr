@@ -1,0 +1,5 @@
+error: unsatisfiable refinement type `TooBigForU8`: no value of `u8` satisfies `value > 255`
+ --> tests/ui/fail/out_of_domain.rs:5:1
+  |
+5 | #[requires(value > 255)]
+  | ^

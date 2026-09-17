@@ -5,7 +5,7 @@ use quote::quote;
 use syn::spanned::Spanned;
 use syn::{Data, DeriveInput, Expr, Fields, Ident};
 
-use crate::{attrs, domain, path, predicate};
+use crate::{attrs, domain, integer, path, predicate};
 
 pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
@@ -50,21 +50,44 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
         )
     })?;
 
-    // 2. An unsatisfiable refinement can never be constructed — compile error.
-    //    A disjunction is unsatisfiable only when every alternative is.
-    if predicate::is_unsat(&dnf) {
-        let inner_render = quote!(#inner_ty).to_string();
-        return Err(syn::Error::new(
+    let inner_render = quote!(#inner_ty).to_string();
+    let unsatisfiable = || {
+        syn::Error::new(
             struct_span,
             format!(
                 "unsatisfiable refinement type `{name}`: no value of `{inner_render}` satisfies `{render}`"
             ),
-        ));
+        )
+    };
+
+    // 2. An unsatisfiable refinement can never be constructed — compile error.
+    //    A disjunction is unsatisfiable only when every alternative is.
+    if predicate::is_unsat(&dnf) {
+        return Err(unsatisfiable());
     }
 
     // 3. Zero-cost elision: the type domain proving some alternative means
     //    `new`/`try_new` never need a runtime check.
     let domain = domain::domain_constraints(inner_ty, &config.variable);
+
+    // 4. Integer-domain completeness: the solver decides over ℚ, but for
+    //    primitive integer types a rational-only witness (e.g. the gap
+    //    `value > 5 && value < 6`, or `value > 255` on `u8`) is not
+    //    constructible. Reject a refinement only when *every* alternative is
+    //    proven to admit no integer in the type's domain.
+    if domain::is_supported_integer(inner_ty)
+        && dnf.iter().all(|branch| {
+            let mut combined = domain.clone();
+            combined.extend(branch.iter().cloned());
+            matches!(
+                integer::analyze(&combined, &config.variable),
+                integer::IntegerFeasibility::Infeasible
+            )
+        })
+    {
+        return Err(unsatisfiable());
+    }
+
     let elided = predicate::entailed_by(&domain, &dnf);
 
     // 4. Runtime predicate: the conjoined original expressions, evaluated

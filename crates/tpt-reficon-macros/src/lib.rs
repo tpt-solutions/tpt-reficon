@@ -15,6 +15,11 @@
 //!   disjunctive normal form: a disjunction is unsatisfiable only when every
 //!   alternative is, and the domain elides the check when it proves an
 //!   alternative).
+//! - Integer-domain completeness: for primitive integer inner types, an exact
+//!   single-variable integer-feasibility analysis runs per alternative against
+//!   the type's domain, so rational-only refinements (`value > 5 && value < 6`,
+//!   or `value > 255` on `u8`) become compile errors rather than
+//!   always-panicking constructors.
 
 #![warn(missing_docs)]
 
@@ -23,6 +28,7 @@ extern crate proc_macro;
 mod attrs;
 mod domain;
 mod expand;
+mod integer;
 mod path;
 mod predicate;
 
