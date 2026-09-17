@@ -85,6 +85,17 @@ And a check the type already guarantees is compiled out entirely:
 struct NonNegativeU64(u64);
 ```
 
+## Where the design-document examples stand
+
+[`spec.txt`](spec.txt) section 4 sketches three API examples. Their current
+state:
+
+| `spec.txt` §4 example | Status |
+| --- | --- |
+| `#[derive(Refine)]` + `#[requires(value > 0 && value <= 100)]` on `struct BoundedPercentage(u8)` | **Implemented** — see the quick start above and the runnable tour in [`examples/refinement_types.rs`](crates/tpt-reficon/examples/refinement_types.rs). |
+| `#[ffi_contract(bridge = "go", header = "payment_processor.h")]` on a foreign-facing struct | **Not implemented** — Phase 4 (see [`todo.md`](todo.md)); the `Refine` derive is the first slice of the planned contract machinery. |
+| `#[ensures(result.is_ok() -> …)]` post-conditions on functions | **Not implemented** — `#[ensures(...)]` currently means "an additional `requires(...)`"; real post-state semantics are Phase 2 (see the soundness notes above). |
+
 ## Crates
 
 | Crate | Purpose |

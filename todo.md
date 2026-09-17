@@ -97,7 +97,10 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 - [ ] User guide (mdBook or docs.rs long-form docs): refinement types, FFI contracts, fractional borrows
 - [x] Runnable tour example (`crates/tpt-reficon/examples/refinement_types.rs`) wired
       into CI, referenced from README
-- [ ] Expand README with runnable examples from spec.txt section 4
+- [x] Expand README with the API examples from spec.txt section 4: status table
+      mapping each example to implementation state — the refinement-type example
+      is runnable (quick start + tour), the FFI-contract and `ensures`
+      post-state examples are explicitly tracked as not-yet-implemented
 - [ ] Positioning doc: comparison vs. `bindgen`, `cbindgen`, `proptest`
 
 ## Phase 9 — Release & Publishing
