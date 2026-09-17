@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README: status table mapping the `spec.txt` section-4 API examples to their
   implementation state (refinement types runnable; FFI contracts and `ensures`
   post-state semantics tracked as not-yet-implemented).
+- Positioning doc `docs/positioning.md`: candid comparison with `bindgen`,
+  `cbindgen`, and `proptest` — role, guarantees, limitations, and guidance on
+  when each tool fits.
 - Initial workspace scaffold with four crates: `tpt-reficon-verifier`,
   `tpt-reficon-core`, `tpt-reficon-macros`, and the `tpt-reficon` facade.
 - `tpt-reficon-verifier`: in-house QF_LRA decision procedure via

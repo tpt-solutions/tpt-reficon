@@ -101,7 +101,8 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
       mapping each example to implementation state — the refinement-type example
       is runnable (quick start + tour), the FFI-contract and `ensures`
       post-state examples are explicitly tracked as not-yet-implemented
-- [ ] Positioning doc: comparison vs. `bindgen`, `cbindgen`, `proptest`
+- [x] Positioning doc (`docs/positioning.md`): honest comparison vs. `bindgen`,
+      `cbindgen`, and `proptest` — role, guarantees, and "when to reach for which"
 
 ## Phase 9 — Release & Publishing
 - [ ] Finalize crate metadata (description, keywords, categories, repository, license) for all crates

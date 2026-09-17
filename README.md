@@ -162,3 +162,8 @@ there is no public issue process for security findings yet.
 
 Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE) at
 your option. See [NOTICE](NOTICE) for ported-code attribution.
+
+## Further reading
+
+- [Positioning doc](docs/positioning.md) — how tpt-reficon compares with
+  `bindgen`, `cbindgen`, and `proptest`, and when each is the right tool.
