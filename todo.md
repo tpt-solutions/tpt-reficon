@@ -40,8 +40,10 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 ### Frontend hardening (review 2026-09)
 - [x] Runtime checks on integer primitives evaluate in `i128` — solver-consistent,
       no debug panics or release wrap for narrow types (e.g. `value + 200 < 300` on `u8`)
-- [ ] Support `||` (disjunction) in predicates: lower to DNF branches, case-split
-      through the solver, branch-wise elision/entailment (e.g. `value == 0 || value == 1`)
+- [x] Support `||` (disjunction) in predicates: lowered to DNF, case-split for
+      satisfiability (a disjunction is UNSAT only when every alternative is) and
+      elided when the domain proves an alternative (e.g. `value == 0 || value == 1`,
+      or `value <= 3 || value <= 255` on `u8`); branch cap guards blow-up
 - [ ] Integer-domain (ℤ) completeness: catch predicates with no *integral* solution
       (e.g. `2*value == 1` on `u8`) at compile time instead of an always-panicking
       runtime check (today the solver decides over ℚ; see README "Soundness notes")

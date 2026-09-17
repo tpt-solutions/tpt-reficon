@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   implies the predicate. Otherwise it emits a precise runtime check
   (`new` panics, `try_new`/`TryFrom` error) with a `'static` message that
   never requires the inner type to implement `Debug`.
+- `tpt-reficon-macros`: disjunction (`||`) support in predicates, lowered to
+  disjunctive normal form. A disjunction is a compile error (unsatisfiable)
+  only when every alternative is, and it is elided when the type's domain
+  proves some alternative (e.g. `value <= 3 || value <= 255` on `u8`). A
+  pathological disjunction/conjunction expansion is rejected with a
+  span-accurate error rather than expanding without bound.
 - `tpt-reficon-core`: `Refine` trait and the `RefinementError` runtime-check
   error type (no allocation, usable in `no_std`-adjacent contexts).
 - `tpt-reficon`: facade crate re-exporting `prelude::*` (trait + derive macro

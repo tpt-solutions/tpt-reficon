@@ -5,8 +5,6 @@ use quote::quote;
 use syn::spanned::Spanned;
 use syn::{Data, DeriveInput, Expr, Fields, Ident};
 
-use tpt_reficon_verifier::solver::{entails, unsat};
-
 use crate::{attrs, domain, path, predicate};
 
 pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
@@ -25,11 +23,13 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
     let variable = Ident::new(&config.variable, Span::call_site());
     let allowed = ::core::slice::from_ref(&config.variable);
 
-    // 1. Lowers every predicate to the verifier's constraint IR.
-    let mut constraints = Vec::new();
+    // 1. Lowers every predicate to DNF over the verifier's constraint IR.
+    //    Multiple attributes are conjoined; `||` within one predicate
+    //    distributes into alternatives.
+    let mut forms = Vec::with_capacity(config.predicates.len());
     let mut render = String::new();
     for expr in &config.predicates {
-        constraints.extend(predicate::lower(expr, allowed)?);
+        forms.push(predicate::lower(expr, allowed)?);
         if !render.is_empty() {
             render.push_str(" && ");
         }
@@ -40,9 +40,19 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
     } else {
         render
     };
+    let dnf = predicate::conjoin(&forms).ok_or_else(|| {
+        syn::Error::new(
+            struct_span,
+            format!(
+                "refinement type `{name}` has too many predicate alternatives (`{render}`); \
+                 simplify the disjunctions"
+            ),
+        )
+    })?;
 
     // 2. An unsatisfiable refinement can never be constructed — compile error.
-    if unsat(&constraints) {
+    //    A disjunction is unsatisfiable only when every alternative is.
+    if predicate::is_unsat(&dnf) {
         let inner_render = quote!(#inner_ty).to_string();
         return Err(syn::Error::new(
             struct_span,
@@ -52,10 +62,10 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
         ));
     }
 
-    // 3. Zero-cost elision: the type domain proving every constraint means
+    // 3. Zero-cost elision: the type domain proving some alternative means
     //    `new`/`try_new` never need a runtime check.
     let domain = domain::domain_constraints(inner_ty, &config.variable);
-    let elided = constraints.iter().all(|c| entails(&domain, c));
+    let elided = predicate::entailed_by(&domain, &dnf);
 
     // 4. Runtime predicate: the conjoined original expressions, evaluated
     //    with the refined variable bound to the value under construction.

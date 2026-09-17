@@ -48,6 +48,17 @@ pub struct TightRange {
     x: u8,
 }
 
+/// Disjunctive refinement (`||`) — runtime-checked: `value == 0 || value == 1`.
+#[derive(RefineMacro)]
+#[requires(value == 0 || value == 1)]
+pub struct Flag(u8);
+
+/// Disjunction whose *second* alternative (`value <= 255`) is implied by the
+/// `u8` domain, so the whole refinement is elided to a zero-cost constructor.
+#[derive(RefineMacro)]
+#[requires(value <= 3 || value <= 255)]
+pub struct ElidedDisjunction(u8);
+
 proptest! {
     #![proptest_config(ProptestConfig { cases: 256, ..ProptestConfig::default() })]
 
@@ -104,5 +115,26 @@ proptest! {
             "widened named-field check mismatch at value {}",
             v
         );
+    }
+
+    #[test]
+    fn disjunction_matches_semantics(v in any::<u8>()) {
+        let should_hold = v == 0 || v == 1;
+        prop_assert_eq!(
+            Flag::try_new(v).is_ok(),
+            should_hold,
+            "disjunction mismatch at value {}",
+            v
+        );
+    }
+
+    #[test]
+    fn disjunction_elided_by_domain_branch(v in any::<u8>()) {
+        // `value <= 255` holds for every u8, so the whole disjunction is
+        // proven and both constructors are zero-cost.
+        prop_assert!(ElidedDisjunction::try_new(v).is_ok());
+        let d = ElidedDisjunction::new(v);
+        prop_assert_eq!(*d, v);
+        prop_assert_eq!(d.into_inner(), v);
     }
 }

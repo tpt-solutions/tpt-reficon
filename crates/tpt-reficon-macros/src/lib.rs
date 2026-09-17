@@ -11,6 +11,10 @@
 //!   Contradictory refinements are compile errors; refinements the type's
 //!   domain already implies are compiled out entirely (zero-cost elision);
 //!   everything else gets an exact runtime check in `new` / `try_new`.
+//! - Predicates may combine linear comparisons with `&&` and `||` (lowered to
+//!   disjunctive normal form: a disjunction is unsatisfiable only when every
+//!   alternative is, and the domain elides the check when it proves an
+//!   alternative).
 
 #![warn(missing_docs)]
 
@@ -29,7 +33,9 @@ use syn::parse_macro_input;
 /// # Supported attributes
 ///
 /// - `#[requires(<expr>)]` — refine with a predicate the inner value must
-///   satisfy. Repeatable; multiple predicates are conjoined.
+///   satisfy. Repeatable; multiple predicates are conjoined. Predicates are
+///   boolean combinations (`&&`, `||`) of linear comparisons over the refined
+///   variable, e.g. `value > 0 && value <= 100` or `value == 0 || value == 1`.
 /// - `#[ensures(<expr>)]` — accepted as an additional conjoined predicate.
 /// - `#[refine(variable = "name")]` — names the predicate variable that stands
 ///   for the inner value. Defaults to the single field's name, or `value` for

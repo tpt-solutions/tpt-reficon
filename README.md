@@ -116,6 +116,12 @@ struct NonNegativeU64(u64);
   debug builds or wrap (changing the verdict) in release builds.
 - **`ensures(...)` is currently treated as an additional `requires`.** The
   post-state semantics of real `ensures` clauses are not yet modelled.
+- **Disjunctions (`||`) are decided exactly, but elision is branch-wise.**
+  A disjunction is a compile error only when *every* alternative is
+  unsatisfiable, and it is elided only when the domain proves *one* alternative.
+  A tautology whose alternatives are merely jointly exhaustive (e.g.
+  `value == 0 || value != 0`) is therefore not elided and keeps an
+  always-succeeding runtime check.
 - **Overflow is never a verdict.** Every arithmetic step in the solver is
   checked; overflow, exponential blow-up, and unsupported shapes degrade to
   "could not prove" (`Unknown`), never to a spurious answer.

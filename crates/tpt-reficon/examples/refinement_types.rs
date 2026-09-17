@@ -39,6 +39,18 @@ pub struct SmallOffset {
     x: i16,
 }
 
+/// Disjunctive refinement: `value == 0 || value == 42`. Runtime-checked,
+/// because no single alternative is implied by the `u8` domain.
+#[derive(Refine, Debug, Clone, Copy, PartialEq, Eq)]
+#[requires(value == 0 || value == 42)]
+pub struct ZeroOrFortyTwo(u8);
+
+/// Disjunction proven by one alternative: `value <= 255` always holds for
+/// `u8`, so this is elided to a zero-cost constructor.
+#[derive(Refine, Debug, Clone, Copy, PartialEq, Eq)]
+#[requires(value <= 10 || value <= 255)]
+pub struct ElidedByBranch(u8);
+
 fn main() {
     let pct = BoundedPercentage::new(73);
     assert_eq!(*pct, 73);
@@ -61,6 +73,17 @@ fn main() {
     assert_eq!(*off, 3);
     assert!(SmallOffset::try_new(11).is_err());
     println!("SmallOffset(3) -> {off:?}");
+
+    // `||`: either alternative satisfies the refinement.
+    assert!(ZeroOrFortyTwo::try_new(0).is_ok());
+    assert!(ZeroOrFortyTwo::try_new(42).is_ok());
+    assert!(ZeroOrFortyTwo::try_new(1).is_err());
+    println!("ZeroOrFortyTwo: 0 and 42 ok, 1 rejected");
+
+    // `ElidedByBranch::try_new` is infallible: the second alternative is
+    // discharged by the `u8` domain at compile time.
+    assert!(ElidedByBranch::try_new(200).is_ok());
+    println!("ElidedByBranch: check elided via the implied `value <= 255` branch");
 
     println!("all example assertions passed");
 }
