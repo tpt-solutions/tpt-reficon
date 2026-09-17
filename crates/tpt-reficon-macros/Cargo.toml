@@ -27,3 +27,4 @@ proc-macro-crate = "3"
 [dev-dependencies]
 trybuild = "1"
 tpt-reficon-core = { path = "../tpt-reficon-core" }
+proptest = "1"

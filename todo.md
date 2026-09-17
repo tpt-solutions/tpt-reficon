@@ -65,7 +65,7 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 - [ ] Fallback to in-process solving when daemon is unavailable/disabled
 
 ## Phase 7 — Testing & Quality
-- [ ] Property-based tests (proptest) for solver + macro-generated checks
+- [x] Property-based tests (proptest) for solver + macro-generated checks
 - [ ] Compile-time overhead benchmarking (macro expansion + verifier latency)
 - [ ] Fuzz testing the FFI header parser
 - [ ] Full workspace clippy/fmt/MSRV gates enforced in CI (ties back to Phase 0 CI)

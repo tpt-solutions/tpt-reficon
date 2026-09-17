@@ -22,3 +22,6 @@ default = []
 # feature. Not implemented yet; kept so downstream feature-selection code does
 # not need to change when it lands.
 z3-reserved = []
+
+[dev-dependencies]
+proptest = "1"
