@@ -15,7 +15,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/tpt-solutions/tpt-reficon"
 homepage = "https://github.com/tpt-solutions/tpt-reficon"
 keywords = ["refinement", "ffi", "formal-verification", "solver", "smt"]
-categories = ["development-tools", "no-std"]
+categories = ["development-tools"]
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

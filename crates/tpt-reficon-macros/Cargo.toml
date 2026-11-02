@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Proc-macro frontend for tpt-reficon: refinement types, function contracts, FFI contracts."
+documentation = "https://docs.rs/tpt-reficon-macros"
 keywords.workspace = true
 categories.workspace = true
 

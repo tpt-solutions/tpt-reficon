@@ -9,6 +9,7 @@ description = """
 Constraint IR and a self-contained Fourier–Motzkin QF_LRA decision procedure,
 plus memory-layout/alignment proof utilities, for tpt-reficon.
 """
+documentation = "https://docs.rs/tpt-reficon-verifier"
 keywords.workspace = true
 categories.workspace = true
 
