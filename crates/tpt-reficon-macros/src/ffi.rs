@@ -157,30 +157,33 @@ fn check_repr_c(item: &ItemStruct) -> syn::Result<()> {
     ))
 }
 
-/// Reads the foreign struct's layout from the bindgen output for `header`.
+/// Runs bindgen over the header and parses its output. With `layout_tests`,
+/// the output also carries clang's layout assertions.
 #[cfg(feature = "ffi-bindgen")]
-fn read_foreign_layout(config: &Config, c_name: &str) -> syn::Result<StructLayout> {
+pub(crate) fn bindgen_ast(header: &LitStr, layout_tests: bool) -> syn::Result<syn::File> {
     let manifest = std::env::var("CARGO_MANIFEST_DIR")
-        .map_err(|_| syn::Error::new(config.header.span(), "CARGO_MANIFEST_DIR is not set"))?;
-    let header_path = std::path::Path::new(&manifest).join(config.header.value());
+        .map_err(|_| syn::Error::new(header.span(), "CARGO_MANIFEST_DIR is not set"))?;
+    let header_path = std::path::Path::new(&manifest).join(header.value());
     let header_str = header_path.to_string_lossy().into_owned();
 
     let bindings = bindgen::Builder::default()
         .header(header_str)
-        .layout_tests(true)
+        .layout_tests(layout_tests)
         .generate()
         .map_err(|e| {
             syn::Error::new(
-                config.header.span(),
-                format!("failed to parse C header `{}`: {e}", config.header.value()),
+                header.span(),
+                format!("failed to parse C header `{}`: {e}", header.value()),
             )
         })?;
-    let generated: syn::File = syn::parse_str(&bindings.to_string()).map_err(|e| {
-        syn::Error::new(
-            config.header.span(),
-            format!("unexpected bindgen output: {e}"),
-        )
-    })?;
+    syn::parse_str(&bindings.to_string())
+        .map_err(|e| syn::Error::new(header.span(), format!("unexpected bindgen output: {e}")))
+}
+
+/// Reads the foreign struct's layout from the bindgen output for `header`.
+#[cfg(feature = "ffi-bindgen")]
+fn read_foreign_layout(config: &Config, c_name: &str) -> syn::Result<StructLayout> {
+    let generated = bindgen_ast(&config.header, true)?;
 
     let s = find_struct(&generated, c_name).ok_or_else(|| {
         syn::Error::new(

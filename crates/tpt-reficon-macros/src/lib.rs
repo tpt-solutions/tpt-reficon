@@ -33,6 +33,7 @@ mod ffi;
 mod integer;
 mod path;
 mod predicate;
+mod wrappers;
 
 use syn::parse_macro_input;
 
@@ -95,6 +96,20 @@ pub fn contract(
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     match contract::expand(attr.into(), item.into()) {
+        Ok(ts) => ts.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+/// Declares safe wrappers around C functions in a header.
+///
+/// Each declaration's Rust signature is checked against the header, and its
+/// `#[requires]` and `#[ensures]` attributes are enforced before the unsafe
+/// call. Needs the `ffi-bindgen` feature, and a crate that allows `unsafe_code`.
+/// See `docs/design/ffi-wrappers.md`.
+#[proc_macro]
+pub fn ffi_wrappers(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    match wrappers::expand(input.into()) {
         Ok(ts) => ts.into(),
         Err(e) => e.to_compile_error().into(),
     }

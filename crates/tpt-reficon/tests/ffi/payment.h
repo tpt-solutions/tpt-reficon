@@ -7,3 +7,6 @@ struct payment {
     uint8_t flag;
     double *ptr;
 };
+
+/* Sample function for the ffi_wrappers! tests. */
+int32_t process_payment(int32_t amount);

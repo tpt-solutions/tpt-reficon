@@ -36,6 +36,8 @@ pub mod prelude {
     pub use tpt_reficon_macros::contract;
     /// The `#[ffi_contract]` attribute (needs the `ffi` feature to expand).
     pub use tpt_reficon_macros::ffi_contract;
+    /// Safe wrappers around C functions, checked against a header (needs the `ffi` feature).
+    pub use tpt_reficon_macros::ffi_wrappers;
     /// The `#[derive(Refine)]` proc macro (macro namespace).
     #[doc(hidden)]
     pub use tpt_reficon_macros::Refine;
