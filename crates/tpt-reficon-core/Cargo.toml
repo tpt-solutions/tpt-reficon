@@ -18,5 +18,7 @@ tpt-reficon-verifier = { version = "0.1.0", path = "../tpt-reficon-verifier", op
 
 [features]
 default = []
+# Lock-free fractional-permission accessor (prototype; API may change).
+unstable = []
 # Enables solver-backed helpers exercised by macro-debugging tooling only.
 verifier = ["dep:tpt-reficon-verifier"]

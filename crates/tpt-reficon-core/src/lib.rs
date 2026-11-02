@@ -85,6 +85,10 @@ impl fmt::Debug for RefinementError {
 
 impl std::error::Error for RefinementError {}
 
+/// Fractional-permission accessor prototype (Phase 5). Experimental.
+#[cfg(feature = "unstable")]
+pub mod fractional;
+
 /// Items re-exported as `tpt_reficon::prelude::*`.
 pub mod prelude {
     pub use crate::{Refine, RefinementError};

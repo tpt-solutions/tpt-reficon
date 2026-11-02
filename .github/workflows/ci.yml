@@ -42,6 +42,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run tests
         run: cargo test --workspace
+      - name: Run unstable accessor tests
+        run: cargo test -p tpt-reficon-core --features unstable
 
   examples:
     name: examples
