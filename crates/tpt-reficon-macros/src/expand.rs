@@ -97,7 +97,9 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
         preds if preds.len() == 1 => preds[0].clone(),
         _ => {
             let preds = &config.predicates;
-            syn::parse_quote!((#(#preds)&&*))
+            // Each predicate is parenthesized: `a && b || c` would otherwise
+            // parse as `(a && b) || c` and accept values that violate `a`.
+            syn::parse_quote!((#((#preds))&&*))
         }
     };
 

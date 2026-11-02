@@ -46,7 +46,9 @@ pub fn domain_constraints(ty: &Type, var: &str) -> Vec<Constraint> {
         "i8" => vec![ge(i64::from(i8::MIN)), le(i64::from(i8::MAX))],
         "i16" => vec![ge(i64::from(i16::MIN)), le(i64::from(i16::MAX))],
         "i32" => vec![ge(i64::from(i32::MIN)), le(i64::from(i32::MAX))],
-        "i64" => vec![ge(i64::MIN), le(i64::MAX)],
+        // `ge(i64::MIN)` would negate `i64::MIN` (overflow). Every i64 already
+        // satisfies `>= i64::MIN`, so the lower bound is dropped without loss.
+        "i64" => vec![le(i64::MAX)],
         "i128" | "isize" => Vec::new(),
         "f32" | "f64" => Vec::new(),
         _ => Vec::new(),
