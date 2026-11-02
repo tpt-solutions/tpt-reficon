@@ -6,5 +6,6 @@
   - [Writing predicates](predicates.md)
   - [How checks are decided](checks.md)
   - [Soundness model](soundness.md)
+- [Function contracts](function-contracts.md)
 - [FFI contracts (partial)](ffi-contracts.md)
 - [Fractional borrows (prototype)](fractional-borrows.md)

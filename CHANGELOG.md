@@ -8,7 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- `#[ffi_contract(bridge = "c" | "go", header = "...", c_name = "...")]`
+- `#[contract]`: pre- and postconditions on functions with integer parameters
+  and results. `#[requires]` is checked at entry, `#[ensures]` on `result` at
+  exit, and a violation panics. Predicates the parameter or return-type domains
+  prove are compiled out. Unsatisfiable preconditions are compile errors. Design
+  in `docs/design/function-contracts.md`.
+- `#[ffi_contract](bridge = "c" | "go", header = "...", c_name = "...")]`
   (feature `ffi`, needs libclang): proves a `repr(C)` struct mirrors a C struct
   from a header. The foreign layout is read from clang's values via bindgen's
   layout assertions. Covers name, offset, size, alignment, and total size, with
@@ -123,6 +128,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Solver witness reconstruction rejected satisfiable systems such as
   `x > 0 ∧ x == 1`, reporting "could not decide". A strict bound now counts only
   when it sits exactly on the chosen point. Regression test added.
+- Refinement derive: with more than one `#[requires]`, the runtime check joined
+  predicates without parentheses. `value < 10` plus `value == 0 || value == 42`
+  accepted 42, which violates the first predicate. Each predicate is now
+  parenthesized, with a regression test.
+- Refinement derive and `#[contract]`: any refinement on an `i64` panicked during
+  expansion, because the domain's lower bound negated `i64::MIN`. The bound was
+  a tautology, so it is dropped. Regression tests added.
 
 ### Changed
 - **Deviation from `spec.txt`:** the design document describes emitting

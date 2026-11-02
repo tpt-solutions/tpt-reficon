@@ -97,7 +97,7 @@ state:
 | --- | --- |
 | `#[derive(Refine)]` + `#[requires(value > 0 && value <= 100)]` on `struct BoundedPercentage(u8)` | **Implemented** — see the quick start above and the runnable tour in [`examples/refinement_types.rs`](crates/tpt-reficon/examples/refinement_types.rs). |
 | `#[ffi_contract(bridge = "go", header = "payment_processor.h")]` on a foreign-facing struct | **Partial** — struct layout proofs work with the `ffi` feature for `bridge = "c"` and `bridge = "go"` (the Go struct must be declared in the cgo preamble; see [`docs/design/go-header-ingestion.md`](docs/design/go-header-ingestion.md)). Safe wrappers are not generated yet. |
-| `#[ensures(result.is_ok() -> …)]` post-conditions on functions | **Not implemented** — `#[ensures(...)]` currently means "an additional `requires(...)`"; real post-state semantics are Phase 2 (see the soundness notes above). |
+| `#[ensures(result.is_ok() -> …)]` post-conditions on functions | **Implemented for integer functions** via `#[contract]`: `#[requires]` checks at entry, `#[ensures]` checks `result` at exit, and a violation panics. Predicates the domains prove are compiled out. The `spec.txt` form with `result.is_ok()` is not supported. See [`docs/design/function-contracts.md`](docs/design/function-contracts.md). |
 
 ## Crates
 
@@ -130,8 +130,8 @@ state:
   must agree with the solver's reasoning, so the derive evaluates them in
   `i128` — never in the narrow inner type, where arithmetic could panic in
   debug builds or wrap (changing the verdict) in release builds.
-- **`ensures(...)` is currently treated as an additional `requires`.** The
-  post-state semantics of real `ensures` clauses are not yet modelled.
+- **`ensures(...)` on a refinement type is treated as an additional `requires`.**
+  Post-state semantics apply to `#[contract]` functions, not to the derive.
 - **Disjunctions (`||`) are decided exactly, but elision is branch-wise.**
   A disjunction is a compile error only when *every* alternative is
   unsatisfiable, and it is elided only when the domain proves *one* alternative.

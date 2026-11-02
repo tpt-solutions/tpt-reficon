@@ -47,10 +47,9 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 - [x] Integer-domain (ℤ) completeness: exact single-variable integer-feasibility
       per alternative, intersected with the type domain — catches `value > 5 && value < 6`
       and `value > 255` on `u8` at compile time (conservative; brute-force-oracle proptest)
-- [ ] Real `ensures` post-state semantics (post-condition on the constructed value);
-      today `ensures` is treated as an additional `requires`. Decision: deferred until
-      function contracts exist; on a refinement type the constructed value is the same
-      as the `requires` check, so the current behaviour is equivalent there
+- [x] Real `ensures` post-state semantics for functions: `#[contract]` checks `#[requires]` at entry and
+      `#[ensures]` on `result` at exit (`docs/design/function-contracts.md`). On the refinement derive, `ensures`
+      is still an additional `requires`, which is equivalent there because the constructed value is the one checked
 
 ## Phase 3 — Core Runtime Crate (`tpt-reficon-core`)
 - [x] Create `crates/tpt-reficon-core` crate
