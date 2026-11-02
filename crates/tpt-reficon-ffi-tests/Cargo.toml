@@ -1,0 +1,16 @@
+[package]
+name = "tpt-reficon-ffi-tests"
+version = "0.0.0"
+edition = "2021"
+description = "Integration tests for tpt-reficon's ffi_wrappers! macro. Not published."
+publish = false
+
+# Deliberately without `[lints] workspace = true`: the wrappers call C, which
+# needs `unsafe`, and the workspace forbids `unsafe_code`.
+#
+# Its own (empty) workspace, so the default workspace build and its CI jobs do
+# not need libclang. It runs in the `ffi` CI job.
+[workspace]
+
+[dependencies]
+tpt-reficon = { path = "../tpt-reficon", features = ["ffi"] }

@@ -80,6 +80,8 @@ jobs:
         run: cargo test -p tpt-reficon --features ffi
       - name: Test macro expansion
         run: cargo test -p tpt-reficon-macros --features ffi-bindgen
+      - name: Test safe C wrappers
+        run: cargo test --manifest-path crates/tpt-reficon-ffi-tests/Cargo.toml
 
   fuzz:
     name: fuzz (cargo-fuzz, solver)
