@@ -26,6 +26,7 @@
 
 pub mod ir;
 pub mod layout;
+pub mod permission;
 pub mod rational;
 pub mod solver;
 
