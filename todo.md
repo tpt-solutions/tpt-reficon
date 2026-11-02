@@ -65,7 +65,10 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 - [x] `#[ffi_contract(bridge = "...", header = "...")]` macro implementation (struct-level, `ffi` feature)
 - [x] Memory layout/alignment verification: `repr(C)` struct vs. foreign layout via `prove_equivalent` and
       solver-backed `prove_within_bounds`, plus `const` size/align assertions
-- [ ] Generate safe wrapper functions enforcing preconditions before the `unsafe` FFI call
+- [x] Generate safe wrapper functions enforcing preconditions before the `unsafe` FFI call: `ffi_wrappers!`
+      checks each Rust signature against the header, and `#[requires]`/`#[ensures]` run through `#[contract]`
+      before the call (`docs/design/ffi-wrappers.md`). Written as a macro over function declarations, not as
+      an attribute on the struct, because the wrapper needs a function to attach to
 - [ ] Integration tests against sample C and Go libraries — C sample header done (`crates/tpt-reficon/tests/ffi/`);
       Go side is `crates/tpt-reficon/tests/go/payment/`: a cgo-preamble struct, a checked-in
       `c-shared` header, and a Go test asserting the same layout (done)

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `ffi_wrappers!` (feature `ffi`): declares safe wrappers around C functions.
+  Each signature is checked against the header, `#[requires]` and `#[ensures]`
+  run through `#[contract]` before the unsafe call, and the call is confined to
+  the wrapper. Design in `docs/design/ffi-wrappers.md`. End-to-end tests are in
+  the standalone crate `crates/tpt-reficon-ffi-tests`, which the `ffi` CI job runs.
 - `#[contract]`: pre- and postconditions on functions with integer parameters
   and results. `#[requires]` is checked at entry, `#[ensures]` on `result` at
   exit, and a violation panics. Predicates the parameter or return-type domains

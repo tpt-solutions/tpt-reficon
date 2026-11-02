@@ -30,7 +30,8 @@ runtime cost. Everything else gets a precise runtime check.
 - **Contract-based FFI (partial, `ffi` feature)** — `#[ffi_contract(bridge = "c",
   header = "...")]` reads a `repr(C)` struct's layout from a C header (through
   bindgen, using clang's own layout values) and proves your struct mirrors it.
-  Safe wrapper generation and Go integration tests are still to come.
+  `ffi_wrappers!` declares safe wrappers around C functions: each signature is
+  checked against the header, and preconditions run before the unsafe call.
 - **Fractional borrows (research prototype)** — the solver-backed
   non-interference check lives in `tpt-reficon-verifier`, and a lock-free
   `SharedU64` accessor lives in `tpt-reficon-core` behind `unstable`. The
@@ -96,7 +97,7 @@ state:
 | `spec.txt` §4 example | Status |
 | --- | --- |
 | `#[derive(Refine)]` + `#[requires(value > 0 && value <= 100)]` on `struct BoundedPercentage(u8)` | **Implemented** — see the quick start above and the runnable tour in [`examples/refinement_types.rs`](crates/tpt-reficon/examples/refinement_types.rs). |
-| `#[ffi_contract(bridge = "go", header = "payment_processor.h")]` on a foreign-facing struct | **Partial** — struct layout proofs work with the `ffi` feature for `bridge = "c"` and `bridge = "go"` (the Go struct must be declared in the cgo preamble; see [`docs/design/go-header-ingestion.md`](docs/design/go-header-ingestion.md)). Safe wrappers are not generated yet. |
+| `#[ffi_contract(bridge = "go", header = "payment_processor.h")]` on a foreign-facing struct | **Partial** — struct layout proofs work with the `ffi` feature for `bridge = "c"` and `bridge = "go"` (the Go struct must be declared in the cgo preamble; see [`docs/design/go-header-ingestion.md`](docs/design/go-header-ingestion.md)). Safe wrappers are available through `ffi_wrappers!`. |
 | `#[ensures(result.is_ok() -> …)]` post-conditions on functions | **Implemented for integer functions** via `#[contract]`: `#[requires]` checks at entry, `#[ensures]` checks `result` at exit, and a violation panics. Predicates the domains prove are compiled out. The `spec.txt` form with `result.is_ok()` is not supported. See [`docs/design/function-contracts.md`](docs/design/function-contracts.md). |
 
 ## Crates

@@ -1,7 +1,7 @@
 # FFI contracts (partial)
 
 > **Status: struct layout proofs are implemented behind the `ffi` feature.**
-> Safe wrapper generation and Go integration tests are not built yet. Track
+> Safe wrappers are covered in [FFI wrappers](ffi-wrappers.md). Go integration tests are not built yet. Track
 > progress in `todo.md`, Phase 4.
 
 Enable the feature on the facade crate:
