@@ -25,6 +25,15 @@ tpt-reficon-verifier = { version = "0.1.0", path = "../tpt-reficon-verifier" }
 # the user's Cargo.toml actually uses (e.g. a renamed `tpt-reficon-core`).
 proc-macro-crate = "3"
 
+# Optional: C header ingestion for `#[ffi_contract]`. bindgen needs libclang at
+# build time, so the default build does not pull it in.
+bindgen = { version = "0.73", optional = true }
+
+[features]
+default = []
+# Enables `#[ffi_contract]`, which parses C headers through bindgen.
+ffi-bindgen = ["dep:bindgen"]
+
 [dev-dependencies]
 trybuild = "1"
 tpt-reficon-core = { version = "0.1.0", path = "../tpt-reficon-core" }

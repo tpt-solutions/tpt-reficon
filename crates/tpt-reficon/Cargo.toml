@@ -22,3 +22,5 @@ tpt-reficon-macros = { version = "0.1.0", path = "../tpt-reficon-macros" }
 default = []
 # Fractional-borrow prototype (semantics may change between releases).
 unstable = []
+# `#[ffi_contract]`: C header ingestion through bindgen (needs libclang at build time).
+ffi = ["tpt-reficon-macros/ffi-bindgen"]

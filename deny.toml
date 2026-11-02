@@ -29,6 +29,10 @@ allow = [
     "Apache-2.0",
     "MIT",
     "Unicode-3.0",
+    # Permissive licenses pulled in only by the optional `ffi-bindgen`
+    # feature (bindgen is BSD-3-Clause; some of its build deps are ISC).
+    "BSD-3-Clause",
+    "ISC",
 ]
 
 [sources]

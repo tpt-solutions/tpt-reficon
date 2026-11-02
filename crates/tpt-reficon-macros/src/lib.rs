@@ -28,6 +28,7 @@ extern crate proc_macro;
 mod attrs;
 mod domain;
 mod expand;
+mod ffi;
 mod integer;
 mod path;
 mod predicate;
@@ -50,6 +51,31 @@ use syn::parse_macro_input;
 pub fn derive_refine(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as syn::DeriveInput);
     match expand::expand_refine(&input) {
+        Ok(ts) => ts.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+/// Proves that a `#[repr(C)]` struct mirrors a C struct declared in a header.
+///
+/// # Arguments
+///
+/// - `bridge = "c"` or `bridge = "go"` — the foreign side. Both read a C
+///   header; a Go struct must be declared as a C struct in the cgo preamble.
+/// - `header = "..."` — path to the header, relative to the crate's
+///   `CARGO_MANIFEST_DIR`.
+/// - `c_name = "..."` — optional; the C struct name when it differs from the
+///   Rust struct's name.
+///
+/// Requires the `ffi-bindgen` feature (`tpt-reficon/ffi` from the facade) and
+/// libclang at build time. See `docs/design/go-header-ingestion.md` for the Go
+/// bridge and the crate docs for the supported field types.
+#[proc_macro_attribute]
+pub fn ffi_contract(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match ffi::expand(attr.into(), item.into()) {
         Ok(ts) => ts.into(),
         Err(e) => e.to_compile_error().into(),
     }
