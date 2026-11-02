@@ -1,0 +1,5 @@
+error: `#[ensures]` needs an integer return type, because it constrains `result`
+ --> tests/ui/fail/contract_ensures_non_integer.rs:5:30
+  |
+5 | fn not_an_integer(x: i32) -> bool {
+  |                              ^^^^

@@ -32,6 +32,8 @@ pub mod prelude {
     pub use tpt_reficon_core::Refine;
     /// Runtime-check error type.
     pub use tpt_reficon_core::RefinementError;
+    /// The `#[contract]` attribute for pre- and postconditions on functions.
+    pub use tpt_reficon_macros::contract;
     /// The `#[ffi_contract]` attribute (needs the `ffi` feature to expand).
     pub use tpt_reficon_macros::ffi_contract;
     /// The `#[derive(Refine)]` proc macro (macro namespace).

@@ -26,6 +26,7 @@
 extern crate proc_macro;
 
 mod attrs;
+mod contract;
 mod domain;
 mod expand;
 mod ffi;
@@ -76,6 +77,24 @@ pub fn ffi_contract(
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     match ffi::expand(attr.into(), item.into()) {
+        Ok(ts) => ts.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+/// Adds pre- and postconditions to a function.
+///
+/// `#[contract]` must be the outermost attribute. Inside it, `#[requires(...)]`
+/// predicates may mention integer parameters, and `#[ensures(...)]` predicates
+/// may also mention `result`, the integer return value. A violated precondition
+/// or postcondition panics. Predicates the parameter or return-type domains
+/// already prove are compiled out. See `docs/design/function-contracts.md`.
+#[proc_macro_attribute]
+pub fn contract(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match contract::expand(attr.into(), item.into()) {
         Ok(ts) => ts.into(),
         Err(e) => e.to_compile_error().into(),
     }

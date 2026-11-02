@@ -1,0 +1,5 @@
+error: unsatisfiable contract on `never_callable`: no arguments satisfy `x > 5 && x < 3`
+ --> tests/ui/fail/contract_unsatisfiable.rs:5:4
+  |
+5 | fn never_callable(x: i64) -> i64 {
+  |    ^^^^^^^^^^^^^^

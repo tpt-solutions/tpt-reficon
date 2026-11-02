@@ -12,4 +12,7 @@ fn ui() {
     t.compile_fail("tests/ui/fail/nonlinear.rs");
     t.compile_fail("tests/ui/fail/multiple_fields.rs");
     t.compile_fail("tests/ui/fail/generic.rs");
+    t.pass("tests/ui/pass/contract_elided.rs");
+    t.compile_fail("tests/ui/fail/contract_unsatisfiable.rs");
+    t.compile_fail("tests/ui/fail/contract_ensures_non_integer.rs");
 }
