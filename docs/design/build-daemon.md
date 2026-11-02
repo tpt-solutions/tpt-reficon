@@ -1,7 +1,32 @@
 # Build-time daemon and caching (Phase 6 design)
 
-Status: design only. Nothing is built. The first step is measurement, described
-below.
+Status: **not built, and not planned.** The measurement below shows the solver
+is too cheap for a daemon to pay for itself. The design is kept in case that
+changes.
+
+## Measurement
+
+`cargo bench -p tpt-reficon-verifier` (release, thin LTO), ns per `decide` call:
+
+| Scenario | ns/op |
+| --- | --- |
+| empty system | 54 |
+| bounded single variable | 1,825 |
+| strict disjoint bounds (UNSAT) | 1,482 |
+| equality reference | 3,737 |
+| `!=` premises within budget | 2,441 |
+| two-variable polytope | 4,715 |
+| four-variable elimination | 11,290 |
+| thirty bounds, one variable | 15,870 |
+
+Even the heaviest scenario costs about 16 µs. A crate with 1,000 refined types
+spends on the order of 10 ms in the solver. A cold `rustc` proc-macro load
+costs far more than that, and it is paid per crate, not per predicate.
+
+**Decision:** do not build the daemon, and do not build the in-process fallback
+that would sit beside it. Solver latency does not justify the IPC, the
+trust-boundary work, or the cache store. Revisit only if a measured expansion
+profile shows the solver dominating on a real workload.
 
 ## Recommendation: measure before building
 
@@ -54,7 +79,7 @@ returns an error. The daemon is an optimization, so the build must succeed with
 it disabled. Timeout for the daemon round-trip: a small fixed budget, after which
 the macro solves locally.
 
-## Open items
+## Open items (only if the daemon is revisited)
 
 - Whether `Unknown` results should be cached. Recommendation: no. They are cheap
   to recompute and caching them hides budget changes.

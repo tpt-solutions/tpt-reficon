@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   borrows (Phase 5 literature review and design), and the build-time daemon
   (Phase 6, design only, with a measure-first recommendation).
 - Proptest no-panic property over `#[ffi_contract]` input parsing.
+- Go `bridge = "go"` integration fixture (`crates/tpt-reficon/tests/go/payment/`):
+  a cgo-preamble struct, a checked-in `c-shared` header, and a Go test that
+  asserts the same layout.
+- `tpt-reficon-core::fractional::SharedU64` (feature `unstable`): lock-free
+  fractional-permission accessor for `u64` built on atomics, with no `unsafe`.
 - User guide as an mdBook under `docs/user-guide/` (refinement types, predicate
   syntax, how checks are decided, soundness model; FFI contracts and fractional
   borrows marked as partial/prototype).

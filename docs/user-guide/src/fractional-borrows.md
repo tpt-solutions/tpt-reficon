@@ -21,6 +21,10 @@ assert!(check_configuration(&[Access::Write, Access::Read]).is_err());
 `Err` means the solver proved that no fraction split grants those accesses at
 once.
 
+The runtime side is `tpt_reficon_core::fractional::SharedU64` (feature
+`unstable`): a lock-free `u64` cell whose read and write handles follow the same
+unit model.
+
 The design, the literature review (Boyland 2003, Bornat et al. 2005, Iris,
 RustBelt, Prusti, Creusot), and the limits are in
 [`docs/design/fractional-borrows.md`](../../design/fractional-borrows.md).

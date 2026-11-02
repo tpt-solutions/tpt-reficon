@@ -32,8 +32,9 @@ runtime cost. Everything else gets a precise runtime check.
   bindgen, using clang's own layout values) and proves your struct mirrors it.
   Safe wrapper generation and Go integration tests are still to come.
 - **Fractional borrows (research prototype)** — the solver-backed
-  non-interference check for fractional permissions exists in
-  `tpt-reficon-verifier`. The `#[fractional_borrow]` macro is not built yet.
+  non-interference check lives in `tpt-reficon-verifier`, and a lock-free
+  `SharedU64` accessor lives in `tpt-reficon-core` behind `unstable`. The
+  `#[fractional_borrow]` macro is not built yet.
   Design and literature review: [`docs/design/fractional-borrows.md`](docs/design/fractional-borrows.md).
 
 See [`todo.md`](todo.md) for the full plan.

@@ -68,22 +68,25 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
       solver-backed `prove_within_bounds`, plus `const` size/align assertions
 - [ ] Generate safe wrapper functions enforcing preconditions before the `unsafe` FFI call
 - [ ] Integration tests against sample C and Go libraries — C sample header done (`crates/tpt-reficon/tests/ffi/`);
-      Go `c-shared` library test still to do
+      Go side is `crates/tpt-reficon/tests/go/payment/`: a cgo-preamble struct, a checked-in
+      `c-shared` header, and a Go test asserting the same layout (done)
 
 ## Phase 5 — Fractional Permission Borrows (Research/Prototype)
 - [x] Literature review: separation logic, prior art (RustBelt, Iris, Prusti, Creusot) — `docs/design/fractional-borrows.md`
 - [x] Design `#[fractional_borrow]` macro API surface (proposed syntax in the design doc)
 - [x] Prototype non-interference proofs via `tpt-reficon-verifier` (`permission` module)
-- [ ] Prototype lock-free concurrent accessor codegen — blocked on the `unsafe_code = forbid` decision; recommended
-      path (atomics over `Copy` integer fields, no `unsafe`) is written up in the design doc
-- [ ] Ship behind an `unstable`/experimental feature flag — flag exists but no macro is gated behind it yet
+- [x] Prototype lock-free concurrent accessor — built as a runtime type over atomics (`SharedU64`), no `unsafe`.
+      Codegen from `#[fractional_borrow]` is still to do
+- [x] Ship behind an `unstable`/experimental feature flag: `tpt-reficon-core::fractional` (`SharedU64` accessor)
+      is gated on `unstable`, which the facade forwards
 
 ## Phase 6 — Build-Time Daemon & Caching
 - [x] Design build-time daemon process to cache verifier results across compilations — design only;
       recommendation is to measure expansion cost before building (`docs/design/build-daemon.md`)
 - [x] IPC mechanism between proc-macro (compiler process) and daemon (design)
 - [x] Cache invalidation strategy (keyed on predicate AST + constraint IR hash; design)
-- [ ] Fallback to in-process solving when daemon is unavailable/disabled — design written; not implemented
+- [x] Fallback to in-process solving: not needed, because no daemon is built. Measured solver cost is 0.05–16 µs
+      per predicate (`docs/design/build-daemon.md`)
 
 ## Phase 7 — Testing & Quality
 - [x] Property-based tests (proptest) for solver + macro-generated checks

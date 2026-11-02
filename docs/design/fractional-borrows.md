@@ -1,8 +1,13 @@
 # Fractional borrows (Phase 5 design and literature review)
 
-Status: research prototype. The solver-backed non-interference check lives in
-`crates/tpt-reficon-verifier/src/permission.rs`. The `#[fractional_borrow]`
-macro and accessor codegen are not built yet.
+Status: research prototype. Two pieces exist:
+
+- the solver-backed non-interference check, in
+  `crates/tpt-reficon-verifier/src/permission.rs`;
+- a runtime accessor, `SharedU64` in `crates/tpt-reficon-core/src/fractional.rs`
+  (feature `unstable`), built on atomics with no `unsafe`.
+
+The `#[fractional_borrow]` macro that would generate such accessors is not built yet.
 
 ## Literature review
 
@@ -52,10 +57,14 @@ checks: for any set of live handles, a fraction assignment exists with
 
 - Implemented: the configuration check, with tests for reader-only, single
   writer, writer-plus-reader, and two-writer configurations. It is exact over ℚ.
-- Not implemented: the accessor codegen. A lock-free accessor needs an
-  `UnsafeCell` or equivalent. The workspace forbids `unsafe_code`, so the
-  codegen is blocked on a decision about whether to relax that rule for generated
-  code. Recommendation: keep the rule, and restrict the first accessor prototype to
-  `Copy` integer fields backed by `std` atomics, which needs no `unsafe`.
+- Implemented: `SharedU64`, a lock-free accessor for `u64` built on
+  `AtomicU32` (free units) and `AtomicU64` (value). Readers CAS one unit out of
+  the pool, and a writer CAS-takes the whole pool. Handles return their units on
+  drop. Tests cover exclusion in both directions, lost-update freedom under
+  concurrent writers, and read stability under a concurrent writer.
+- Not implemented: codegen from `#[fractional_borrow]`. The restriction to
+  atomic-sized integers is deliberate, because it keeps the workspace's
+  `unsafe_code = forbid` rule intact. Extending the accessor to other `Copy` types
+  would need `UnsafeCell`, which is a separate decision.
 - Not modelled: the ordering of handle creation and drop across threads. The
   check is a static configuration check, not a runtime protocol proof.
