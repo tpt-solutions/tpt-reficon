@@ -1,0 +1,12 @@
+[book]
+title = "tpt-reficon User Guide"
+authors = ["TPT Solutions"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+
+[output.html]
+git-repository-url = "https://github.com/tpt-solutions/tpt-reficon"
+edit-url-template = "https://github.com/tpt-solutions/tpt-reficon/edit/master/docs/user-guide/{path}"

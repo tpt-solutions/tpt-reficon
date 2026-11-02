@@ -48,7 +48,9 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
       per alternative, intersected with the type domain — catches `value > 5 && value < 6`
       and `value > 255` on `u8` at compile time (conservative; brute-force-oracle proptest)
 - [ ] Real `ensures` post-state semantics (post-condition on the constructed value);
-      today `ensures` is treated as an additional `requires`
+      today `ensures` is treated as an additional `requires`. Decision: deferred until
+      function contracts exist; on a refinement type the constructed value is the same
+      as the `requires` check, so the current behaviour is equivalent there
 
 ## Phase 3 — Core Runtime Crate (`tpt-reficon-core`)
 - [x] Create `crates/tpt-reficon-core` crate
@@ -94,7 +96,8 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 ## Phase 8 — Documentation
 - [x] `#![warn(missing_docs)]` enforced on every public item across all crates
       (gate landed with review 2026-09, committed as `a83e72c`)
-- [ ] User guide (mdBook or docs.rs long-form docs): refinement types, FFI contracts, fractional borrows
+- [x] User guide (mdBook, `docs/user-guide/`): refinement types, soundness model; FFI contracts and
+      fractional borrows chapters marked as planned until Phases 4–5 land
 - [x] Runnable tour example (`crates/tpt-reficon/examples/refinement_types.rs`) wired
       into CI, referenced from README
 - [x] Expand README with the API examples from spec.txt section 4: status table
@@ -105,7 +108,8 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
       `cbindgen`, and `proptest` — role, guarantees, and "when to reach for which"
 
 ## Phase 9 — Release & Publishing
-- [ ] Finalize crate metadata (description, keywords, categories, repository, license) for all crates
+- [x] Finalize crate metadata (description, keywords, categories, repository, license, documentation) for all crates
+      (dropped the inaccurate `no-std` category: no crate is `no_std`)
 - [ ] Publish to crates.io in dependency order: `tpt-reficon-verifier` → `tpt-reficon-core` → `tpt-reficon-macros` → `tpt-reficon`
 - [ ] Tag `v0.1.0`, write GitHub release notes
 - [ ] Public announcement / ecosystem outreach

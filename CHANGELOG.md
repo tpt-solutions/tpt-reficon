@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- User guide as an mdBook under `docs/user-guide/` (refinement types, predicate
+  syntax, how checks are decided, soundness model; FFI contracts and fractional
+  borrows marked as planned).
 - README: status table mapping the `spec.txt` section-4 API examples to their
   implementation state (refinement types runnable; FFI contracts and `ensures`
   post-state semantics tracked as not-yet-implemented).
