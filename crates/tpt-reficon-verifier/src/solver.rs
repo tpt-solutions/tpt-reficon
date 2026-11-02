@@ -484,7 +484,15 @@ fn reconstruct_witness(eliminations: &[Elimination]) -> Option<Model> {
                     Ordering::Less => raw_lo.checked_midpoint(raw_hi)?,
                     // Equal bounds are fine unless some boundary is strict.
                     Ordering::Equal => {
-                        let any_strict = lo_max.iter().chain(hi_min.iter()).any(|&(_, s)| s);
+                        // Only a strict bound sitting exactly on the chosen
+                        // point is violated; looser strict bounds are slack.
+                        let at_point = |&(v, s): &(Rat, bool)| {
+                            s && (v.checked_cmp(raw_lo) == Some(Ordering::Equal))
+                        };
+                        let any_strict = lo_max.iter().any(at_point)
+                            || hi_min
+                                .iter()
+                                .any(|&(v, s)| s && v.checked_cmp(raw_hi) == Some(Ordering::Equal));
                         if any_strict {
                             // Inconsistent leaf; witness construction fails and
                             // the caller will degrade to `Unknown`.
@@ -740,6 +748,18 @@ mod tests {
             c(lin("x", -3), Relation::Eq),
             c(lin("x", -2), Relation::Le),
         ]));
+    }
+
+    #[test]
+    fn equality_with_slack_strict_bound_has_witness() {
+        // x > 0 ∧ x == 1: the strict bound x > 0 is slack at x = 1.
+        let cs = [
+            c(Linear::var("x"), Relation::Gt),
+            c(lin("x", -1), Relation::Eq),
+        ];
+        let m = model(&cs).expect("satisfiable");
+        assert_eq!(m["x"], Rat::from_i128(1));
+        assert!(satisfies_all(&cs, &m));
     }
 
     #[test]
