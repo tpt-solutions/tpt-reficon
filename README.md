@@ -25,16 +25,18 @@ runtime cost. Everything else gets a precise runtime check.
   refinements are compile errors; refinements implied by the type's domain run
   at zero cost; all others get an exact runtime check with great diagnostics.
 
-### Roadmap
+### Status
 
-Not yet implemented — see [`todo.md`](todo.md) for the plan:
+- **Contract-based FFI (partial, `ffi` feature)** — `#[ffi_contract(bridge = "c",
+  header = "...")]` reads a `repr(C)` struct's layout from a C header (through
+  bindgen, using clang's own layout values) and proves your struct mirrors it.
+  Safe wrapper generation and Go integration tests are still to come.
+- **Fractional borrows (research prototype)** — the solver-backed
+  non-interference check for fractional permissions exists in
+  `tpt-reficon-verifier`. The `#[fractional_borrow]` macro is not built yet.
+  Design and literature review: [`docs/design/fractional-borrows.md`](docs/design/fractional-borrows.md).
 
-- **Contract-based FFI** — `#[ffi_contract(bridge = "c", header = "...")]` to
-  parse a C header, compute its ABI layout, and *prove* your `repr(C)` struct
-  mirrors it byte-for-byte before you ever write `unsafe`.
-- **Fractional borrows (experimental)** — `#[fractional_borrow]` to split
-  access permissions across threads with non-interference validated by the
-  solver. Behind the `unstable` feature flag.
+See [`todo.md`](todo.md) for the full plan.
 
 ## Quick start
 
@@ -93,7 +95,7 @@ state:
 | `spec.txt` §4 example | Status |
 | --- | --- |
 | `#[derive(Refine)]` + `#[requires(value > 0 && value <= 100)]` on `struct BoundedPercentage(u8)` | **Implemented** — see the quick start above and the runnable tour in [`examples/refinement_types.rs`](crates/tpt-reficon/examples/refinement_types.rs). |
-| `#[ffi_contract(bridge = "go", header = "payment_processor.h")]` on a foreign-facing struct | **Not implemented** — Phase 4 (see [`todo.md`](todo.md)); the `Refine` derive is the first slice of the planned contract machinery. |
+| `#[ffi_contract(bridge = "go", header = "payment_processor.h")]` on a foreign-facing struct | **Partial** — struct layout proofs work with the `ffi` feature for `bridge = "c"` and `bridge = "go"` (the Go struct must be declared in the cgo preamble; see [`docs/design/go-header-ingestion.md`](docs/design/go-header-ingestion.md)). Safe wrappers are not generated yet. |
 | `#[ensures(result.is_ok() -> …)]` post-conditions on functions | **Not implemented** — `#[ensures(...)]` currently means "an additional `requires(...)`"; real post-state semantics are Phase 2 (see the soundness notes above). |
 
 ## Crates
@@ -109,6 +111,7 @@ state:
 
 | Flag | Crate | Effect |
 | --- | --- | --- |
+| `ffi` | `tpt-reficon` | Enables `#[ffi_contract]`, which needs libclang at build time |
 | `unstable` | `tpt-reficon` | Reserved for experimental features (e.g. fractional borrows); semantics may change |
 | `z3-reserved` | `tpt-reficon-verifier` | Reserved extension point for a future Z3 parity backend |
 

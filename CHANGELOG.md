@@ -8,9 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `#[ffi_contract(bridge = "c" | "go", header = "...", c_name = "...")]`
+  (feature `ffi`, needs libclang): proves a `repr(C)` struct mirrors a C struct
+  from a header. The foreign layout is read from clang's values via bindgen's
+  layout assertions. Covers name, offset, size, alignment, and total size, with
+  `const` size and alignment assertions in the expansion.
+- `tpt-reficon-verifier::permission`: solver-backed non-interference check for
+  fractional permissions (research prototype for Phase 5).
+- Design notes under `docs/design/`: Go header ingestion (Phase 4), fractional
+  borrows (Phase 5 literature review and design), and the build-time daemon
+  (Phase 6, design only, with a measure-first recommendation).
+- Proptest no-panic property over `#[ffi_contract]` input parsing.
 - User guide as an mdBook under `docs/user-guide/` (refinement types, predicate
   syntax, how checks are decided, soundness model; FFI contracts and fractional
-  borrows marked as planned).
+  borrows marked as partial/prototype).
 - README: status table mapping the `spec.txt` section-4 API examples to their
   implementation state (refinement types runnable; FFI contracts and `ensures`
   post-state semantics tracked as not-yet-implemented).
@@ -104,12 +115,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `core::format!` (not available in `core`) in favor of static
   `&'static str` messages, and dropped runtime format captures named after
   macro-internal variables.
+- Solver witness reconstruction rejected satisfiable systems such as
+  `x > 0 ∧ x == 1`, reporting "could not decide". A strict bound now counts only
+  when it sits exactly on the chosen point. Regression test added.
 
 ### Changed
 - **Deviation from `spec.txt`:** the design document describes emitting
   SMT-LIB2 queries to the `tpt-telos` solver. Because the solver was ported
   in-house and does not consume SMT-LIB2, the proc-macro frontend targets the
   internal constraint IR directly (see `tpt-reficon-verifier` docs).
+- Dropped the `no-std` crates.io category, since no crate is `no_std`.
+- `cargo deny` allow-list gains `BSD-3-Clause` and `ISC` for the optional
+  `ffi-bindgen` dependency. CI now runs deny with `--all-features` and has an
+  `ffi` job that installs libclang.
 
 ### Security
 - Supply-chain scanning gate: `deny.toml` plus a `cargo-deny` CI job enforce

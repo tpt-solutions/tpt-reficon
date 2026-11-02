@@ -59,25 +59,31 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 - [x] `crates/tpt-reficon` facade crate re-exporting `prelude::*` (macros + core) — matches spec.txt API example
 
 ## Phase 4 — Contract-Based FFI Boundaries
-- [ ] C header ingestion via `bindgen` AST
-- [ ] Investigate Go header/cgo ingestion strategy (Go has no native C headers — evaluate cgo-generated headers vs. a Go-side codegen helper)
-- [ ] `#[ffi_contract(bridge = "...", header = "...")]` macro implementation
-- [ ] Memory layout/alignment verification: compare `repr(C)` struct vs. parsed foreign layout using ported `tpt-telos-uir-bridge` logic (Phase 1)
+- [x] C header ingestion via `bindgen` (feature `ffi-bindgen`). Deviation: the foreign layout is read from
+      bindgen's layout-test assertions (clang's own `sizeof`/`alignof`/`offsetof`), not by walking the AST
+- [x] Investigate Go header/cgo ingestion strategy — decided: C header is the single layout source; no Go-side
+      codegen. See `docs/design/go-header-ingestion.md`
+- [x] `#[ffi_contract(bridge = "...", header = "...")]` macro implementation (struct-level, `ffi` feature)
+- [x] Memory layout/alignment verification: `repr(C)` struct vs. foreign layout via `prove_equivalent` and
+      solver-backed `prove_within_bounds`, plus `const` size/align assertions
 - [ ] Generate safe wrapper functions enforcing preconditions before the `unsafe` FFI call
-- [ ] Integration tests against sample C and Go libraries
+- [ ] Integration tests against sample C and Go libraries — C sample header done (`crates/tpt-reficon/tests/ffi/`);
+      Go `c-shared` library test still to do
 
 ## Phase 5 — Fractional Permission Borrows (Research/Prototype)
-- [ ] Literature review: separation logic, prior art (RustBelt, Iris, Prusti, Creusot)
-- [ ] Design `#[fractional_borrow]` macro API surface
-- [ ] Prototype non-interference proofs via `tpt-reficon-verifier`
-- [ ] Prototype lock-free concurrent accessor codegen
-- [ ] Ship behind an `unstable`/experimental feature flag
+- [x] Literature review: separation logic, prior art (RustBelt, Iris, Prusti, Creusot) — `docs/design/fractional-borrows.md`
+- [x] Design `#[fractional_borrow]` macro API surface (proposed syntax in the design doc)
+- [x] Prototype non-interference proofs via `tpt-reficon-verifier` (`permission` module)
+- [ ] Prototype lock-free concurrent accessor codegen — blocked on the `unsafe_code = forbid` decision; recommended
+      path (atomics over `Copy` integer fields, no `unsafe`) is written up in the design doc
+- [ ] Ship behind an `unstable`/experimental feature flag — flag exists but no macro is gated behind it yet
 
 ## Phase 6 — Build-Time Daemon & Caching
-- [ ] Design build-time daemon process to cache verifier results across compilations
-- [ ] IPC mechanism between proc-macro (compiler process) and daemon
-- [ ] Cache invalidation strategy (keyed on predicate AST + constraint IR hash)
-- [ ] Fallback to in-process solving when daemon is unavailable/disabled
+- [x] Design build-time daemon process to cache verifier results across compilations — design only;
+      recommendation is to measure expansion cost before building (`docs/design/build-daemon.md`)
+- [x] IPC mechanism between proc-macro (compiler process) and daemon (design)
+- [x] Cache invalidation strategy (keyed on predicate AST + constraint IR hash; design)
+- [ ] Fallback to in-process solving when daemon is unavailable/disabled — design written; not implemented
 
 ## Phase 7 — Testing & Quality
 - [x] Property-based tests (proptest) for solver + macro-generated checks
@@ -86,7 +92,8 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 - [x] Compile-time overhead benchmarking (verifier latency micro-benchmarks in
       `crates/tpt-reficon-verifier/benches/solver.rs`; macro-expansion overhead
       deferred to a `cargo build --timings`-style harness — noted in the bench doc)
-- [ ] Fuzz testing the FFI header parser
+- [ ] Fuzz testing the FFI header parser — partial: proptest no-panic property over `#[ffi_contract]` input parsing;
+      a `cargo-fuzz` target is still to do
 - [x] Full workspace clippy/fmt/MSRV gates enforced in CI (ties back to Phase 0 CI), plus example build/run
 - [x] CI supply-chain scanning (`deny.toml` + `cargo-deny` job): RustSec
       advisories, wildcard ban, and an explicit SPDX license allow-list over
