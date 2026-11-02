@@ -5,3 +5,8 @@ Cargo.lock
 .vscode/
 .idea/
 *.log
+
+# cargo-fuzz build output and corpus (the target lives in fuzz/)
+fuzz/target
+fuzz/corpus
+fuzz/artifacts

@@ -95,8 +95,10 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 - [x] Compile-time overhead benchmarking (verifier latency micro-benchmarks in
       `crates/tpt-reficon-verifier/benches/solver.rs`; macro-expansion overhead
       deferred to a `cargo build --timings`-style harness — noted in the bench doc)
-- [ ] Fuzz testing the FFI header parser — partial: proptest no-panic property over `#[ffi_contract]` input parsing;
-      a `cargo-fuzz` target is still to do
+- [x] Fuzz testing the FFI header parser — proptest no-panic property over `#[ffi_contract]` input parsing;
+      `cargo-fuzz` target `solver_decide` in `fuzz/` runs in CI (nightly, 60 s). The header-parser fuzz target
+      Header ingestion glue is covered by the proptest property; bindgen's own C parser is out of scope.
+      Local MSVC linking of the libFuzzer runtime fails on this machine, so fuzzing runs on Linux CI only
 - [x] Full workspace clippy/fmt/MSRV gates enforced in CI (ties back to Phase 0 CI), plus example build/run
 - [x] CI supply-chain scanning (`deny.toml` + `cargo-deny` job): RustSec
       advisories, wildcard ban, and an explicit SPDX license allow-list over

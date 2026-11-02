@@ -81,6 +81,21 @@ jobs:
       - name: Test macro expansion
         run: cargo test -p tpt-reficon-macros --features ffi-bindgen
 
+  fuzz:
+    name: fuzz (cargo-fuzz, solver)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz -> target
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Fuzz the solver for 60 seconds
+        run: cargo fuzz run solver_decide -- -max_total_time=60
+        working-directory: fuzz
+
   deny:
     name: supply chain (cargo-deny)
     runs-on: ubuntu-latest
