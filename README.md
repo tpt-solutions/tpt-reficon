@@ -26,6 +26,13 @@ runtime cost. Everything else gets a precise runtime check.
 - **Refinement types** — `#[derive(Refine)]` + `#[requires(...)]`: contradictory
   refinements are compile errors; refinements implied by the type's domain run
   at zero cost; all others get an exact runtime check with great diagnostics.
+- **Checked literals** — `refined!(Type, literal)` fails to compile when the
+  literal breaks the refinement.
+- **Derive extras** — `From`, `AsRef`, `Display`, and `FromStr` on refined types.
+  Opt-in `#[refine(serde)]` and `#[refine(proptest)]` add a validating
+  `Deserialize` and an `Arbitrary` that only yields valid values.
+- **Function contracts** — `#[contract]` with `#[requires]` / `#[ensures]` on
+  integer functions and methods, with `old(x)` for entry values in postconditions.
 
 ## Status
 
