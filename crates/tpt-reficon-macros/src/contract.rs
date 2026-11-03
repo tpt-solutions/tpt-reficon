@@ -416,7 +416,7 @@ fn reject_unsupported(f: &ItemFn) -> syn::Result<()> {
     if sig.constness.is_some() {
         return unsupported(sig.span(), "`const` functions");
     }
-    if sig.unsafety.is_some() {
+    if matches!(sig.safety, syn::Safety::Unsafe(_)) {
         return unsupported(sig.span(), "`unsafe` functions");
     }
     if sig.abi.is_some() {

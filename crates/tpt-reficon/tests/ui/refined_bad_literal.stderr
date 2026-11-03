@@ -1,7 +1,0 @@
-error[E0080]: evaluation panicked: refinement violated by the literal
- --> tests/ui/refined_bad_literal.rs:9:13
-  |
-9 |     let _ = tpt_reficon::refined!(Port, 0);
-  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `main::_` failed here
-  |
-  = note: this error originates in the macro `$crate::panic::panic_2021` which comes from the expansion of the macro `tpt_reficon::refined` (in Nightly builds, run with -Z macro-backtrace for more info)
