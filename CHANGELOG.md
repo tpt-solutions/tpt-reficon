@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `#[fractional_borrow]` (feature `unstable`): typed, lock-free shared state for
+  a struct of `bool` and integer fields. It emits `<Name>Shared` with one
+  permission-guarded cell per field and `try_read_<field>` / `try_write_<field>`
+  accessors. The typed layer is `tpt_reficon_core::fractional::Shared<T>`.
 - `ffi_wrappers!` (feature `ffi`): declares safe wrappers around C functions.
   Each signature is checked against the header, `#[requires]` and `#[ensures]`
   run through `#[contract]` before the unsafe call, and the call is confined to

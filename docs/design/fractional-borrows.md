@@ -62,9 +62,12 @@ checks: for any set of live handles, a fraction assignment exists with
   the pool, and a writer CAS-takes the whole pool. Handles return their units on
   drop. Tests cover exclusion in both directions, lost-update freedom under
   concurrent writers, and read stability under a concurrent writer.
-- Not implemented: codegen from `#[fractional_borrow]`. The restriction to
-  atomic-sized integers is deliberate, because it keeps the workspace's
-  `unsafe_code = forbid` rule intact. Extending the accessor to other `Copy` types
-  would need `UnsafeCell`, which is a separate decision.
+- Implemented: `#[fractional_borrow]` codegen. It emits `<Name>Shared`, with one
+  `Shared<T>` cell per field and `try_read_<field>` / `try_write_<field>`
+  accessors. Permission is per field, so a writer on one field does not block
+  readers of another. Field types are limited to `bool` and primitive integers of
+  at most 64 bits, which is what the atomic cell can hold. That restriction is
+  deliberate: it keeps the workspace's `unsafe_code = forbid` rule intact.
+  Extending to other `Copy` types would need `UnsafeCell`, a separate decision.
 - Not modelled: the ordering of handle creation and drop across threads. The
   check is a static configuration check, not a runtime protocol proof.

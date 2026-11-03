@@ -32,10 +32,10 @@ runtime cost. Everything else gets a precise runtime check.
   bindgen, using clang's own layout values) and proves your struct mirrors it.
   `ffi_wrappers!` declares safe wrappers around C functions: each signature is
   checked against the header, and preconditions run before the unsafe call.
-- **Fractional borrows (research prototype)** — the solver-backed
-  non-interference check lives in `tpt-reficon-verifier`, and a lock-free
-  `SharedU64` accessor lives in `tpt-reficon-core` behind `unstable`. The
-  `#[fractional_borrow]` macro is not built yet.
+- **Fractional borrows (prototype, `unstable` feature)** — `#[fractional_borrow]`
+  turns a struct of integers and `bool` into lock-free shared state with one
+  fractional permission per field. The solver-backed non-interference check lives
+  in `tpt-reficon-verifier`.
   Design and literature review: [`docs/design/fractional-borrows.md`](docs/design/fractional-borrows.md).
 
 See [`todo.md`](todo.md) for the full plan.

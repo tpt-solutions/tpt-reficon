@@ -78,7 +78,10 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 - [x] Design `#[fractional_borrow]` macro API surface (proposed syntax in the design doc)
 - [x] Prototype non-interference proofs via `tpt-reficon-verifier` (`permission` module)
 - [x] Prototype lock-free concurrent accessor — built as a runtime type over atomics (`SharedU64`), no `unsafe`.
-      Codegen from `#[fractional_borrow]` is still to do
+      Codegen from `#[fractional_borrow]` is done (below)
+- [x] `#[fractional_borrow]` codegen (`unstable`): emits `<Name>Shared` with one permission-guarded typed cell per
+      field and `try_read_<field>` / `try_write_<field>` accessors. Permission is per field. Typed layer is
+      `tpt_reficon_core::fractional::Shared<T>` over `Bits` (integers and `bool`)
 - [x] Ship behind an `unstable`/experimental feature flag: `tpt-reficon-core::fractional` (`SharedU64` accessor)
       is gated on `unstable`, which the facade forwards
 
