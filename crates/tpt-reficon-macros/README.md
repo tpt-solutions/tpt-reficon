@@ -38,15 +38,35 @@ rather than expanding without bound.
 
 The derive generates `new`, `try_new`, `TryFrom`, `get`, and `into_inner`.
 Both `new` and the `TryFrom` path check the predicate at runtime, unless the
-check was elided.
+check was elided. It also implements `From<Refined> for Inner`, `AsRef<Inner>`,
+`Display` (the inner value), and `FromStr` (parse the inner type, then check the
+refinement). A type that already implements one of these by hand gets a
+conflicting-impl error, so remove the hand-written impl.
+
+Two opt-in attributes extend the derive:
+
+- `#[refine(serde)]`: a `serde::Deserialize` impl that deserializes the inner
+  type and then runs `try_new`. The user crate must depend on serde.
+- `#[refine(proptest)]`: an `Arbitrary` impl that draws the inner type and keeps
+  the values `try_new` accepts. The user crate must depend on proptest and derive
+  `Debug`.
+
+### `refined!(Type, literal)`
+
+A constructor for a literal, checked at compile time. A literal that breaks the
+refinement fails to compile. The argument must be a constant expression. The
+derive emits a hidden `const fn __tpt_check` for this.
 
 ### `#[contract]`
 
-Adds pre- and postconditions to a function. Apply it as the outermost attribute.
-Inside it, `#[requires(...)]` may mention integer parameters, and `#[ensures(...)]`
-may also mention `result`, the return value. A violated condition panics.
-Conditions proven by the parameter or return-type domains are removed.
-Unsatisfiable preconditions are compile errors.
+Adds pre- and postconditions to a function or method. Apply it as the outermost
+attribute. Inside it, `#[requires(...)]` may mention integer parameters, and
+`#[ensures(...)]` may also mention `result`, the return value. `old(x)` in
+`#[ensures]` names the entry value of an integer parameter, and the check
+snapshots it before the body runs, so it holds for `mut` parameters. A `self` or
+`&self` receiver is allowed; it is not checked, but the body can use it. A
+violated condition panics. Conditions proven by the parameter or return-type
+domains are removed. Unsatisfiable preconditions are compile errors.
 
 ### `#[ffi_contract]` (feature `ffi-bindgen`)
 

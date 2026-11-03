@@ -36,8 +36,15 @@ implementation lives in [`tpt-reficon-macros`](https://crates.io/crates/tpt-refi
   single-variable integer-feasibility check runs against the type's domain. So
   `value > 5 && value < 6`, or `value > 255` on `u8`, is rejected at compile
   time rather than producing a constructor that always panics.
+- **Checked literals.** `refined!(Type, literal)` fails to compile when the
+  literal breaks the refinement.
+- **Derive extras.** `#[derive(Refine)]` also implements `From`, `AsRef`,
+  `Display`, and `FromStr`. Opt-in `#[refine(serde)]` adds a `Deserialize` that
+  validates the value, and `#[refine(proptest)]` adds an `Arbitrary` that yields
+  only valid values.
 - **Function contracts.** `#[contract]` adds `#[requires]` and `#[ensures]`
-  (with `result`) to functions over integer parameters and return values.
+  (with `result`) to functions and methods over integer parameters and return
+  values. `old(x)` in `#[ensures]` refers to a parameter's value at entry.
 - **FFI contracts** (feature `ffi`). `#[ffi_contract]` proves that a
   `#[repr(C)]` struct matches a C or Go struct declared in a header, checking
   field names, offsets, sizes, alignment, and total size. `ffi_wrappers!`
