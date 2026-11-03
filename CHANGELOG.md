@@ -25,7 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `old(x)` in `#[ensures]` names the entry value of an integer parameter. The
   check takes a snapshot before the body runs, so it holds for `mut` parameters.
 - Predicates accept `!` (pushed inward through comparisons, `&&` and `||`),
-  multiplication by a constant, and `true` and `false` as constants.
+  multiplication by a constant, `%` by a positive literal over unsigned types,
+  and `true` and `false` as constants.
+- `refined!(Type, literal)` checks a literal at compile time. A literal that
+  breaks the refinement fails to compile. Each refined type gets a hidden
+  `const fn __tpt_check`, which the macro uses.
 - `#[fractional_borrow]` (feature `unstable`): typed, lock-free shared state for
   a struct of `bool` and integer fields. It emits `<Name>Shared` with one
   permission-guarded cell per field and `try_read_<field>` / `try_write_<field>`

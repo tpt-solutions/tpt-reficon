@@ -104,3 +104,21 @@ assert_eq!(share(10, 4), 2);
 ```
 
 See [function contracts](function-contracts.md) for what is and is not checked.
+
+## Checking a literal at compile time
+
+`refined!(Type, literal)` builds the value and checks the literal during
+compilation, so a literal that breaks the refinement fails to compile:
+
+```rust,edition2021
+# extern crate tpt_reficon;
+# extern crate tpt_reficon_core;
+use tpt_reficon::prelude::*;
+
+#[derive(Refine, Debug)]
+#[requires(value >= 1)]
+pub struct Port(u16);
+
+let port = tpt_reficon::refined!(Port, 8080);
+assert_eq!(*port, 8080);
+```

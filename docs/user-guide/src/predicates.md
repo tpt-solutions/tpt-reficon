@@ -46,3 +46,12 @@ runtime check is emitted.
   These are rejected with a compile error. Multiplication by a constant is linear.
 - Predicates that refer to names other than the predicate variable.
 - Generic refined types.
+
+## Remainders
+
+`value % k` with a positive integer literal `k` is supported on unsigned types.
+A signed type is rejected, because a signed remainder takes the sign of the
+dividend, which the encoding does not model. The remainder is checked at
+runtime, and it can be decided by the solver: `value % 4 == 5` is a compile
+error. The solver treats the quotient over the rationals, so a few integer-only
+cases are missed, and those stay as runtime checks.
