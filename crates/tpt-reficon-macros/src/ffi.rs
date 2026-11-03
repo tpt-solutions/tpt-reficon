@@ -117,15 +117,20 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
         .as_ref()
         .map_or_else(|| item.ident.to_string(), LitStr::value);
 
-    let foreign = read_foreign_layout(&config, &c_name)?;
+    let (foreign, c_types) = read_foreign_layout(&config, &c_name)?;
     let rust_fields = rust_layout_fields(&item)?;
     check_against_foreign(&item, &rust_fields, &foreign)?;
+    let kind_checks = kind_checks(&item, &c_types);
+    let header_dep = header_dependency(&config.header)?;
 
     let name = &item.ident;
     let size = foreign.size as usize;
     let align = foreign.align.bytes() as usize;
     Ok(quote! {
         #item
+
+        #header_dep
+        #(#kind_checks)*
 
         const _: () = ::core::assert!(
             ::core::mem::size_of::<#name>() == #size,
@@ -136,6 +141,35 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
             "tpt-reficon: alignment of Rust struct differs from the C header"
         );
     })
+}
+
+/// Makes the header a build dependency. `include_bytes!` records the file with
+/// Cargo, so editing the header rebuilds the crate and reruns these checks.
+/// Without it, a changed header would pass silently against stale expansions.
+fn header_dependency(header: &LitStr) -> syn::Result<TokenStream> {
+    let manifest = std::env::var("CARGO_MANIFEST_DIR")
+        .map_err(|_| syn::Error::new(header.span(), "CARGO_MANIFEST_DIR is not set"))?;
+    let path = std::path::Path::new(&manifest).join(header.value());
+    let path = path.to_string_lossy().into_owned();
+    Ok(quote! { const _: &[u8] = ::core::include_bytes!(#path); })
+}
+
+/// One exact type-equality check per field, evaluated for the compile target.
+///
+/// The C side is a bindgen type such as `c_long`, whose width depends on the
+/// target. The macro runs on the host and cannot know that width, but the
+/// generated check is compiled for the real target. The check also catches a
+/// kind mismatch of equal size, such as `u32` standing in for `i32`, which the
+/// size and alignment comparison alone accepts.
+fn kind_checks(item: &ItemStruct, c_types: &[Type]) -> Vec<TokenStream> {
+    item.fields
+        .iter()
+        .zip(c_types)
+        .map(|(field, c_ty)| {
+            let rust_ty = &field.ty;
+            quote! { const _: fn(#rust_ty) -> #c_ty = |x| x; }
+        })
+        .collect()
 }
 
 fn check_repr_c(item: &ItemStruct) -> syn::Result<()> {
@@ -166,8 +200,11 @@ pub(crate) fn bindgen_ast(header: &LitStr, layout_tests: bool) -> syn::Result<sy
     let header_path = std::path::Path::new(&manifest).join(header.value());
     let header_str = header_path.to_string_lossy().into_owned();
 
+    // Go's `-buildmode=c-shared` headers use `__declspec(dllexport)` on every
+    // target. Without this flag, clang on Linux rejects them as a parse error.
     let bindings = bindgen::Builder::default()
         .header(header_str)
+        .clang_arg("-fdeclspec")
         .layout_tests(layout_tests)
         .generate()
         .map_err(|e| {
@@ -182,7 +219,7 @@ pub(crate) fn bindgen_ast(header: &LitStr, layout_tests: bool) -> syn::Result<sy
 
 /// Reads the foreign struct's layout from the bindgen output for `header`.
 #[cfg(feature = "ffi-bindgen")]
-fn read_foreign_layout(config: &Config, c_name: &str) -> syn::Result<StructLayout> {
+fn read_foreign_layout(config: &Config, c_name: &str) -> syn::Result<(StructLayout, Vec<Type>)> {
     let generated = bindgen_ast(&config.header, true)?;
 
     let s = find_struct(&generated, c_name).ok_or_else(|| {
@@ -198,6 +235,7 @@ fn read_foreign_layout(config: &Config, c_name: &str) -> syn::Result<StructLayou
 
     let mut fields = Vec::new();
     let mut field_offsets = Vec::new();
+    let mut field_types = Vec::new();
     for field in &s.fields {
         let ident = match &field.ident {
             Some(i) => i.to_string(),
@@ -232,18 +270,20 @@ fn read_foreign_layout(config: &Config, c_name: &str) -> syn::Result<StructLayou
             align: falign,
         });
         field_offsets.push(offset);
+        field_types.push(field.ty.clone());
     }
 
-    Ok(StructLayout {
+    let layout = StructLayout {
         fields,
         offsets: field_offsets,
         size,
         align,
-    })
+    };
+    Ok((layout, field_types))
 }
 
 #[cfg(not(feature = "ffi-bindgen"))]
-fn read_foreign_layout(config: &Config, _c_name: &str) -> syn::Result<StructLayout> {
+fn read_foreign_layout(config: &Config, _c_name: &str) -> syn::Result<(StructLayout, Vec<Type>)> {
     Err(syn::Error::new(
         config.header.span(),
         "`#[ffi_contract]` needs the `ffi-bindgen` feature of `tpt-reficon-macros` (or `tpt-reficon/ffi`)",
@@ -380,6 +420,10 @@ fn scalar_layout(name: &str) -> Option<(u64, Alignment)> {
         "u32" | "i32" | "f32" | "c_int" | "c_uint" | "c_float" => 4,
         "u64" | "i64" | "f64" | "c_longlong" | "c_ulonglong" | "c_double" => 8,
         "usize" | "isize" => std::mem::size_of::<usize>() as u64,
+        // `long` is 4 bytes on Windows and 8 on most Unix targets. The host's
+        // width is used here, and the per-field kind check compiled for the real
+        // target rejects a Rust field whose width differs from it.
+        "c_long" | "c_ulong" => std::mem::size_of::<std::os::raw::c_long>() as u64,
         _ => return None,
     };
     Some((bytes, Alignment::new(bytes as u32)?))
@@ -502,6 +546,30 @@ mod tests {
         .to_string();
         assert!(out.contains("size_of"), "{out}");
         assert!(out.contains("align_of"), "{out}");
+    }
+
+    #[test]
+    fn field_kind_is_checked_for_the_compile_target() {
+        // `amount` is `u32` in Rust but `int32_t` in C: same width, other kind.
+        // The size and alignment asserts alone would accept it.
+        let out = expand_with(
+            &header_attr(),
+            "#[repr(C)] pub struct Payment { id: u64, amount: u32, flag: u8, ptr: *mut f64 }",
+        )
+        .unwrap()
+        .to_string();
+        assert!(out.contains("-> i32"), "{out}");
+    }
+
+    #[test]
+    fn header_is_tracked_as_a_build_dependency() {
+        let out = expand_with(
+            &header_attr(),
+            "#[repr(C)] pub struct Payment { id: u64, amount: i32, flag: u8, ptr: *mut f64 }",
+        )
+        .unwrap()
+        .to_string();
+        assert!(out.contains("include_bytes"), "{out}");
     }
 
     #[test]

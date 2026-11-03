@@ -1,6 +1,6 @@
 //! `tpt-reficon-macros` — the proc-macro frontend.
 //!
-//! Translates user predicates straight into the [`tpt-reficon-verifier`]
+//! Translates user predicates straight into the `tpt-reficon-verifier`
 //! constraint IR (not SMT-LIB2 — see the deviation note in the workspace
 //! `CHANGELOG.md`) and discharges them at macro-expansion time.
 //!

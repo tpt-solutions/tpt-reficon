@@ -17,8 +17,8 @@ use tpt_reficon_verifier::ir::{Constraint, Linear, Relation};
 
 /// The primitive scalar types the derive understands, by their bare name.
 const PRIMITIVES: &[&str] = &[
-    "bool", "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128",
-    "isize", "f32", "f64",
+    "bool", "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128", "isize",
+    "f32", "f64",
 ];
 
 /// The primitive named by `ty`, if `ty` is written as a bare primitive name.
@@ -57,18 +57,8 @@ pub fn domain_constraints(ty: &Type, var: &str) -> Vec<Constraint> {
     let Some(name) = primitive_name(ty) else {
         return Vec::new();
     };
-    let le = |bound: i64| {
-        Constraint(
-            bound_expr(var, bound),
-            Relation::Le,
-        )
-    };
-    let ge = |bound: i64| {
-        Constraint(
-            bound_expr(var, bound),
-            Relation::Ge,
-        )
-    };
+    let le = |bound: i64| Constraint(bound_expr(var, bound), Relation::Le);
+    let ge = |bound: i64| Constraint(bound_expr(var, bound), Relation::Ge);
     match name {
         "bool" => vec![ge(0), le(1)],
         "u8" => vec![ge(0), le(i64::from(u8::MAX))],
@@ -138,5 +128,22 @@ mod tests {
     fn unknown_type_empty() {
         let ty: Type = parse_quote!(custom::Crate::Thing);
         assert!(domain_constraints(&ty, "value").is_empty());
+    }
+
+    #[test]
+    fn only_bare_primitive_names_resolve() {
+        assert_eq!(primitive_name(&parse_quote!(u8)), Some("u8"));
+        assert_eq!(primitive_name(&parse_quote!(f64)), Some("f64"));
+        // A qualified path or a generic could be a user type of the same name.
+        assert_eq!(primitive_name(&parse_quote!(std::primitive::u8)), None);
+        assert_eq!(primitive_name(&parse_quote!(Vec<u8>)), None);
+        assert_eq!(primitive_name(&parse_quote!(Byte)), None);
+    }
+
+    #[test]
+    fn alias_gets_no_domain_and_no_widening() {
+        let ty: Type = parse_quote!(Byte);
+        assert!(domain_constraints(&ty, "value").is_empty());
+        assert!(!is_supported_integer(&ty));
     }
 }

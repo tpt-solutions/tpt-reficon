@@ -19,10 +19,10 @@ tooling that targets the runtime types without the macros.
 ## What it provides
 
 - **`Refine`**, the trait implemented by `#[derive(Refine)]`. It has an
-  associated `Inner` type and two methods: `from_inner_unchecked`, which builds
-  the wrapper without checking the predicate, and `into_inner`, which returns
-  the raw value. Application code normally calls the generated `new`,
-  `try_new`, and `into_inner` methods, not the trait directly.
+  associated `Inner` type and an `into_inner` method, which returns the raw
+  value. There is no public constructor that skips the predicate: values are
+  built through the generated `new` and `try_new`, which check it. Application
+  code normally calls those generated methods, not the trait directly.
 - **`RefinementError`**, the error returned by a failed runtime check. It is
   `Clone`, `Eq`, `Display`, and `std::error::Error`. It holds only a
   `&'static str` and never allocates. Its `Debug` output does not require the
@@ -41,10 +41,6 @@ struct Bounded(u8);
 impl Refine for Bounded {
     type Inner = u8;
 
-    fn from_inner_unchecked(value: u8) -> Self {
-        Bounded(value)
-    }
-
     fn into_inner(self) -> u8 {
         self.0
     }
@@ -52,7 +48,7 @@ impl Refine for Bounded {
 
 fn check(value: u8) -> Result<Bounded, RefinementError> {
     if value > 0 && value <= 100 {
-        Ok(Bounded::from_inner_unchecked(value))
+        Ok(Bounded(value))
     } else {
         Err(RefinementError::with_message("`value > 0 && value <= 100` violated"))
     }

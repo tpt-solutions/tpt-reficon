@@ -451,8 +451,8 @@ mod tests {
     #[test]
     fn wrapper_taking_a_raw_pointer_is_unsafe() {
         // A safe `pub fn` here would let any caller pass a dangling pointer.
-        let out = expand_buffer("pub fn sum_values(values: *const i32, count: u32) -> i32;")
-            .unwrap();
+        let out =
+            expand_buffer("pub fn sum_values(values: *const i32, count: u32) -> i32;").unwrap();
         assert!(out.contains("unsafe fn sum_values"), "{out}");
         assert!(out.contains("# Safety"), "{out}");
     }

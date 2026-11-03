@@ -81,6 +81,11 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
         }
     }
     f.attrs = kept;
+    // Panics come from the generated checks. `track_caller` reports them at the
+    // call site, where the violation happened, not inside this function.
+    if !f.attrs.iter().any(|a| a.path().is_ident("track_caller")) {
+        f.attrs.push(syn::parse_quote!(#[track_caller]));
+    }
     if pre_exprs.is_empty() && post_exprs.is_empty() {
         return Err(syn::Error::new(
             f.sig.ident.span(),
@@ -165,10 +170,14 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
     // every call that returns. Reject it now, the way an unsatisfiable
     // precondition is rejected.
     if !post_exprs.is_empty() {
+        // As in `post_elided` below, a `mut` parameter's entry precondition does
+        // not constrain the exit value that `ensures` sees.
         let impossible = pre_dnf.iter().all(|pre_branch| {
             post_dnf.iter().all(|post_branch| {
                 let mut combined = post_premises.clone();
-                combined.extend(pre_branch.iter().cloned());
+                if !has_mut_int {
+                    combined.extend(pre_branch.iter().cloned());
+                }
                 combined.extend(post_branch.iter().cloned());
                 infeasible(&combined, post_var)
             })
@@ -276,7 +285,13 @@ fn reject_unsupported(f: &ItemFn) -> syn::Result<()> {
     if sig.variadic.is_some() {
         return unsupported(sig.span(), "variadic functions");
     }
-    if !sig.generics.params.is_empty() {
+    // Lifetime parameters change nothing about the checks, so they are fine.
+    if sig
+        .generics
+        .params
+        .iter()
+        .any(|p| !matches!(p, syn::GenericParam::Lifetime(_)))
+    {
         return unsupported(sig.generics.span(), "generic functions");
     }
     Ok(())
@@ -432,6 +447,16 @@ mod tests {
     }
 
     #[test]
+    fn mut_parameter_postcondition_is_not_rejected_as_impossible() {
+        // Entry says `x > 0`, but the body sets `x = -1`, so `x < 0` at exit is
+        // satisfiable. Entry premises must not make it look impossible.
+        let out = expand_str(
+            "#[requires(x > 0)] #[ensures(x < 0)] fn f(mut x: i64) -> i64 { x = -1; x }",
+        );
+        assert!(out.contains("postcondition"), "{out}");
+    }
+
+    #[test]
     fn immutable_parameter_postcondition_is_still_elided() {
         // Without `mut`, the precondition does hold at exit, so the check is
         // provably redundant and stays elided.
@@ -465,5 +490,35 @@ mod tests {
         let out = expand_str("#[requires(x < 1000)] fn f(x: u128) -> u128 { x }");
         assert!(!out.contains("as i128"), "{out}");
         assert!(out.contains("TryInto"), "{out}");
+    }
+}
+
+#[cfg(test)]
+mod attribute_tests {
+    use super::*;
+
+    fn expand_str(src: &str) -> String {
+        let item: TokenStream = src.parse().unwrap();
+        expand(TokenStream::new(), item)
+            .unwrap_or_else(|e| panic!("expansion failed: {e}"))
+            .to_string()
+    }
+
+    #[test]
+    fn lifetime_only_generics_are_accepted() {
+        let out = expand_str("#[requires(x > 0)] fn f<'a>(x: i64) -> i64 { x }");
+        assert!(out.contains("precondition"), "{out}");
+    }
+
+    #[test]
+    fn suffixed_literals_lower() {
+        let out = expand_str("#[requires(x < 5u8)] fn f(x: u8) -> u8 { x }");
+        assert!(out.contains("precondition"), "{out}");
+    }
+
+    #[test]
+    fn generated_checks_report_the_caller_location() {
+        let out = expand_str("#[requires(x > 0)] fn f(x: i64) -> i64 { x }");
+        assert!(out.contains("track_caller"), "{out}");
     }
 }

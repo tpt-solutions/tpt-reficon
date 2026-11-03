@@ -33,7 +33,14 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
     }
 
     let config = attrs::parse_config(&input.attrs, field_def_ident)?;
-    let variable = Ident::new(&config.variable, Span::call_site());
+    // `Ident::new` panics on a string that is not an identifier, so parse it and
+    // report a compile error instead.
+    let variable = syn::parse_str::<Ident>(&config.variable).map_err(|_| {
+        syn::Error::new(
+            struct_span,
+            format!("`{}` is not a valid variable name", config.variable),
+        )
+    })?;
     let allowed = ::core::slice::from_ref(&config.variable);
 
     // 1. Lowers every predicate to DNF over the verifier's constraint IR.
@@ -135,6 +142,7 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
                 #[allow(dead_code)]
                 #[doc = "Constructs a refined value without a runtime check: the type's domain \
                          already implies the refinement, so this was proven at compile time."]
+                #[track_caller]
                 pub fn new(value: #inner_ty) -> Self {
                     #field_constructor
                 }
@@ -158,6 +166,7 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
                 #[allow(dead_code)]
                 #[doc = "Constructs a refined value, panicking if it violates the refinement. \
                          The check is elided only where the verifier proved it redundant."]
+                #[track_caller]
                 pub fn new(value: #inner_ty) -> Self {
                     if 'check: {
                         // The inner binding shadows the parameter inside the
@@ -171,7 +180,7 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
                     } {
                         #field_constructor
                     } else {
-                        ::core::panic!("{}", #msg_literal)
+                        ::core::panic!("{}", #core::RefinementError::with_message(#msg_literal).with_value(value))
                     }
                 }
             },
@@ -188,7 +197,7 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
                     } {
                         ::core::result::Result::Ok(#field_constructor)
                     } else {
-                        ::core::result::Result::Err(#core::RefinementError::with_message(#msg_literal))
+                        ::core::result::Result::Err(#core::RefinementError::with_message(#msg_literal).with_value(value))
                     }
                 }
             },
@@ -199,12 +208,13 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
                 #[allow(dead_code)]
                 #[doc = "Constructs a refined value, panicking if it violates the refinement. \
                          The check is elided only where the verifier proved it redundant."]
+                #[track_caller]
                 pub fn new(value: #inner_ty) -> Self {
                     let #variable: #inner_ty = value;
                     if #runtime_check {
                         #field_constructor
                     } else {
-                        ::core::panic!("{}", #msg_literal)
+                        ::core::panic!("{}", #core::RefinementError::with_message(#msg_literal).with_value(value))
                     }
                 }
             },
@@ -216,7 +226,7 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
                     if #runtime_check {
                         ::core::result::Result::Ok(#field_constructor)
                     } else {
-                        ::core::result::Result::Err(#core::RefinementError::with_message(#msg_literal))
+                        ::core::result::Result::Err(#core::RefinementError::with_message(#msg_literal).with_value(value))
                     }
                 }
             },
@@ -244,6 +254,15 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
             type Target = #inner_ty;
             fn deref(&self) -> &Self::Target {
                 &#field_access
+            }
+        }
+
+        // The reverse direction is total, so it needs no check: a refined value
+        // is always a valid inner value. The refined-to-plain conversion is the
+        // one that is always safe to write as `.into()`.
+        impl ::core::convert::From<#name> for #inner_ty {
+            fn from(value: #name) -> Self {
+                <#name as #core::Refine>::into_inner(value)
             }
         }
 
@@ -317,5 +336,74 @@ fn check_newtype_struct(
             Ok((input.span(), access, ctor, Some(ident), &field.ty))
         }
         _ => Err(err()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn expand_str(src: &str) -> String {
+        let input: DeriveInput = syn::parse_str(src).unwrap();
+        expand_refine(&input)
+            .unwrap_or_else(|e| panic!("expansion failed: {e}"))
+            .to_string()
+    }
+
+    fn expand_err(src: &str) -> String {
+        let input: DeriveInput = syn::parse_str(src).unwrap();
+        match expand_refine(&input) {
+            Ok(_) => panic!("expected an error"),
+            Err(e) => e.to_string(),
+        }
+    }
+
+    #[test]
+    fn u128_runtime_check_does_not_wrap() {
+        let out = expand_str("#[requires(value < 1000)] struct B(u128);");
+        assert!(!out.contains("as i128"), "{out}");
+        assert!(out.contains("TryInto"), "{out}");
+    }
+
+    #[test]
+    fn public_inner_field_is_rejected() {
+        let msg = expand_err("struct B(pub u8);");
+        assert!(msg.contains("private inner field"), "{msg}");
+        let msg = expand_err("struct B { pub v: u8 }");
+        assert!(msg.contains("private inner field"), "{msg}");
+    }
+
+    #[test]
+    fn type_alias_inner_type_is_rejected() {
+        // `Byte` could be any type, so its domain and widening are unknown.
+        let msg = expand_err("struct B(Byte);");
+        assert!(msg.contains("primitive inner type"), "{msg}");
+        let msg = expand_err("struct B(std::primitive::u8);");
+        assert!(msg.contains("primitive inner type"), "{msg}");
+    }
+
+    #[test]
+    fn no_unchecked_constructor_is_generated() {
+        let out = expand_str("struct B(u8);");
+        assert!(!out.contains("from_inner_unchecked"), "{out}");
+    }
+}
+
+#[cfg(test)]
+mod panic_free_tests {
+    use super::*;
+
+    fn expand_err(src: &str) -> String {
+        let input: DeriveInput = syn::parse_str(src).unwrap();
+        match expand_refine(&input) {
+            Ok(_) => panic!("expected an error"),
+            Err(e) => e.to_string(),
+        }
+    }
+
+    #[test]
+    fn invalid_variable_name_is_an_error_not_a_panic() {
+        let msg = expand_err("#[refine(variable = \"1x\")] #[requires(value < 5)] struct B(u8);");
+        assert!(msg.contains("not a valid variable name"), "{msg}");
     }
 }

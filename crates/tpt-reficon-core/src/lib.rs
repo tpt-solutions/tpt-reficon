@@ -36,11 +36,13 @@ pub trait Refine: Sized {
 /// requires the offending inner type to implement `Debug`.
 ///
 /// Messages are `'static`: generated messages embed the refinement predicate
-/// and type name, all of which are known at compile time, so the check never
-/// needs to allocate.
+/// and type name, all of which are known at compile time. The offending value,
+/// when attached with [`with_value`](RefinementError::with_value), is rendered
+/// to a `String`. That allocation happens only on the error path.
 #[derive(Clone, PartialEq, Eq)]
 pub struct RefinementError {
     message: &'static str,
+    value: Option<String>,
 }
 
 impl RefinementError {
@@ -48,18 +50,33 @@ impl RefinementError {
     pub fn new() -> RefinementError {
         RefinementError {
             message: "refinement predicate violated",
+            value: None,
         }
     }
 
     /// A refinement violation with a human-readable explanation of the value
     /// and predicate involved.
     pub fn with_message(message: &'static str) -> RefinementError {
-        RefinementError { message }
+        RefinementError {
+            message,
+            value: None,
+        }
+    }
+
+    /// Attaches the offending value, so the error reports what was rejected.
+    pub fn with_value(mut self, value: impl fmt::Display) -> RefinementError {
+        self.value = Some(value.to_string());
+        self
     }
 
     /// The human-readable explanation (not guaranteed stable across releases).
     pub fn message(&self) -> &str {
         self.message
+    }
+
+    /// The rejected value, rendered with `Display`, if one was attached.
+    pub fn value(&self) -> Option<&str> {
+        self.value.as_deref()
     }
 }
 
@@ -71,13 +88,17 @@ impl Default for RefinementError {
 
 impl fmt::Display for RefinementError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.message)
+        f.write_str(self.message)?;
+        match &self.value {
+            Some(value) => write!(f, " (got {value})"),
+            None => Ok(()),
+        }
     }
 }
 
 impl fmt::Debug for RefinementError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "RefinementError({})", self.message)
+        write!(f, "RefinementError({self})")
     }
 }
 

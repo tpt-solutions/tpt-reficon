@@ -160,6 +160,19 @@ mod tests {
     }
 
     #[test]
+    fn pointer_sized_and_128_bit_fields_are_rejected() {
+        // The atomic cell holds at most 64 bits. `usize`/`isize` have no fixed
+        // width across targets, and `u128` does not fit an `AtomicU64`.
+        for ty in ["usize", "isize", "u128", "i128"] {
+            let msg = err(&format!("struct C {{ a: {ty} }}"));
+            assert!(
+                msg.contains("must be `bool` or a primitive integer"),
+                "{ty}: {msg}"
+            );
+        }
+    }
+
+    #[test]
     fn wide_float_field_is_rejected() {
         let msg = err("struct C { x: f64 }");
         assert!(
