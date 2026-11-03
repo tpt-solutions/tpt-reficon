@@ -30,6 +30,8 @@ mod contract;
 mod domain;
 mod expand;
 mod ffi;
+#[cfg(feature = "unstable")]
+mod fractional;
 mod integer;
 mod path;
 mod predicate;
@@ -110,6 +112,23 @@ pub fn contract(
 #[proc_macro]
 pub fn ffi_wrappers(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     match wrappers::expand(input.into()) {
+        Ok(ts) => ts.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+/// Typed, lock-free shared state with fractional permissions (prototype).
+///
+/// Emits a `<Name>Shared` type with one permission-guarded cell per field,
+/// plus `try_read_<field>` and `try_write_<field>` accessors. Needs the
+/// `unstable` feature. See `docs/design/fractional-borrows.md`.
+#[cfg(feature = "unstable")]
+#[proc_macro_attribute]
+pub fn fractional_borrow(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    match fractional::expand(attr.into(), item.into()) {
         Ok(ts) => ts.into(),
         Err(e) => e.to_compile_error().into(),
     }

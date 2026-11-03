@@ -31,6 +31,8 @@ bindgen = { version = "0.73", optional = true }
 
 [features]
 default = []
+# Enables `#[fractional_borrow]` (prototype; API may change).
+unstable = []
 # Enables `#[ffi_contract]`, which parses C headers through bindgen.
 ffi-bindgen = ["dep:bindgen"]
 
