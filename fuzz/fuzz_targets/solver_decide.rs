@@ -31,8 +31,11 @@ fuzz_target!(|data: &[u8]| {
         for _ in 0..terms {
             let var = VARS[usize::from(next()) % VARS.len()];
             let coeff = i64::from(next() as i8);
-            if let Some(scaled) = Linear::var(var).checked_scale(coeff) {
-                lin = lin.add(&scaled);
+            if let Some(next) = Linear::var(var)
+                .checked_scale(coeff)
+                .and_then(|scaled| lin.checked_add(&scaled))
+            {
+                lin = next;
             }
         }
         let rel = RELS[usize::from(next()) % RELS.len()];

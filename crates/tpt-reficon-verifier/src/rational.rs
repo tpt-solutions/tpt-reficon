@@ -68,8 +68,11 @@ impl Rat {
             Some((a, b)) => (a, b),
             None => (text, ""),
         };
-        let negative = int_part.starts_with('-');
-        let int_digits = int_part.trim_start_matches(['+', '-']);
+        // At most one sign: `+-5` must not parse as `-5`.
+        let (negative, int_digits) = match int_part.strip_prefix('-') {
+            Some(rest) => (true, rest),
+            None => (false, int_part.strip_prefix('+').unwrap_or(int_part)),
+        };
         if int_digits.is_empty() && frac_part.is_empty() {
             return None;
         }
@@ -219,11 +222,31 @@ impl PartialOrd for Rat {
 
 impl Ord for Rat {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Panics only on overflow, which decision paths avoid via
-        // `checked_cmp`; this impl exists for sorting/bookkeeping on small
-        // values only.
-        self.checked_cmp(*other)
-            .expect("rational comparison overflowed")
+        // Never panics: the comparison is done by continued-fraction style
+        // division, which cannot overflow, unlike cross-multiplication. The
+        // decision paths keep using `checked_cmp` and degrade on overflow.
+        cmp_exact(self.n, self.d, other.n, other.d)
+    }
+}
+
+/// Compares `a/b` with `c/d` for positive `b` and `d`, without overflow.
+///
+/// Splits each value into its floor and a fraction in `[0, 1)`. The floors
+/// decide unless they are equal. Then the fractions compare by inverting both,
+/// which is the same comparison on smaller denominators, so the recursion
+/// follows the Euclidean algorithm and terminates.
+fn cmp_exact(a: i128, b: i128, c: i128, d: i128) -> Ordering {
+    let (qa, ra) = (a.div_euclid(b), a.rem_euclid(b));
+    let (qc, rc) = (c.div_euclid(d), c.rem_euclid(d));
+    match qa.cmp(&qc) {
+        Ordering::Equal => match (ra, rc) {
+            (0, 0) => Ordering::Equal,
+            (0, _) => Ordering::Less,
+            (_, 0) => Ordering::Greater,
+            // ra/b vs rc/d with both in (0, 1): invert both sides.
+            _ => cmp_exact(d, rc, b, ra).reverse(),
+        },
+        other => other,
     }
 }
 
@@ -262,6 +285,26 @@ mod tests {
         assert_eq!(neg.approx_f64(), -2.5);
         assert!(Rat::parse_decimal("abc").is_none());
         assert!(Rat::parse_decimal("").is_none());
+        // One sign at most.
+        assert!(Rat::parse_decimal("+-5").is_none());
+        assert!(Rat::parse_decimal("--5").is_none());
+        assert_eq!(Rat::parse_decimal("+5"), Rat::parse_decimal("5"));
+    }
+
+    #[test]
+    fn ord_does_not_panic_at_extremes() {
+        // Cross-multiplication overflows here; `Ord` must still answer.
+        let big = Rat::new(i128::MAX, 2).unwrap();
+        let bigger = Rat::new(i128::MAX, 3).unwrap();
+        assert_eq!(big.cmp(&bigger), Ordering::Greater);
+        assert_eq!(bigger.cmp(&big), Ordering::Less);
+        assert_eq!(big.cmp(&big), Ordering::Equal);
+        let neg = Rat::new(-i128::MAX, 2).unwrap();
+        assert_eq!(neg.cmp(&big), Ordering::Less);
+        // Fractions with huge denominators differ only in the last place.
+        let a = Rat::new(i128::MAX - 1, i128::MAX).unwrap();
+        let b = Rat::new(i128::MAX - 2, i128::MAX - 1).unwrap();
+        assert_eq!(a.cmp(&b), Ordering::Greater);
     }
 
     #[test]

@@ -311,7 +311,10 @@ impl core::fmt::Display for LayoutMismatch {
                 )
             }
             LayoutMismatch::MisalignedSize { size, align } => {
-                write!(f, "struct size {size}B is not a multiple of its {align}B alignment")
+                write!(
+                    f,
+                    "struct size {size}B is not a multiple of its {align}B alignment"
+                )
             }
             LayoutMismatch::StructAlignMismatch { expected, found } => {
                 write!(
@@ -326,7 +329,7 @@ impl core::fmt::Display for LayoutMismatch {
     }
 }
 
-impl core::error::Error for LayoutMismatch {}
+impl std::error::Error for LayoutMismatch {}
 
 /// Proves that the Rust `repr(C)` layout derived from `rust_fields` mirrors
 /// `foreign` byte-for-byte: same field count, names, offsets, sizes, and the

@@ -49,7 +49,7 @@ use tpt_reficon_verifier::{decide, entails, Verdict};
 // x > 0 ∧ x ≤ 100 ⊨ x ≥ 0 ?
 let premises = [
     Constraint(Linear::var("x"), Relation::Gt),
-    Constraint(Linear::var("x").add(&Linear::constant_only(-100)), Relation::Le),
+    Constraint(Linear::var("x").checked_add(&Linear::constant_only(-100)).unwrap(), Relation::Le),
 ];
 let conclusion = Constraint(Linear::var("x"), Relation::Ge);
 assert!(entails(&premises, &conclusion));
