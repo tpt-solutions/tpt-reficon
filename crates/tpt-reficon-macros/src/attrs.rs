@@ -12,6 +12,8 @@ pub struct RefineConfig {
     pub variable: String,
     /// Whether `#[refine(serde)]` asked for a `Deserialize` impl.
     pub serde: bool,
+    /// Whether `#[refine(proptest)]` asked for an `Arbitrary` impl.
+    pub proptest: bool,
 }
 
 /// Parses all helper attributes present on the struct.
@@ -22,6 +24,7 @@ pub fn parse_config(
     let mut predicates = Vec::new();
     let mut variable: Option<String> = None;
     let mut serde = false;
+    let mut proptest = false;
 
     for attr in attrs {
         if attr.path().is_ident("requires") || attr.path().is_ident("ensures") {
@@ -50,6 +53,15 @@ pub fn parse_config(
                         }
                         serde = true;
                     }
+                    RefineItem::Proptest => {
+                        if proptest {
+                            return Err(syn::Error::new(
+                                attr.span(),
+                                "`refine(proptest)` may only be specified once",
+                            ));
+                        }
+                        proptest = true;
+                    }
                 }
             }
         }
@@ -63,6 +75,7 @@ pub fn parse_config(
         predicates,
         variable,
         serde,
+        proptest,
     })
 }
 
@@ -70,6 +83,7 @@ pub fn parse_config(
 enum RefineItem {
     Variable { value: LitStr },
     Serde,
+    Proptest,
 }
 
 impl syn::parse::Parse for RefineItem {
@@ -78,10 +92,13 @@ impl syn::parse::Parse for RefineItem {
         if name == "serde" {
             return Ok(RefineItem::Serde);
         }
+        if name == "proptest" {
+            return Ok(RefineItem::Proptest);
+        }
         if name != "variable" {
             return Err(syn::Error::new(
                 name.span(),
-                "unknown `refine(...)` key; expected `variable` or `serde`",
+                "unknown `refine(...)` key; expected `variable`, `serde`, or `proptest`",
             ));
         }
         input.parse::<syn::Token![=]>()?;

@@ -169,7 +169,7 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
             quote! {
                 #[allow(dead_code)]
                 #[doc = "Constructs a refined value, panicking if it violates the refinement. \
-                         The check is elided only where the verifier proved it redundant."]
+                         Runtime check: the type's domain does not prove the predicate, so the check is kept."]
                 #[track_caller]
                 pub fn new(value: #inner_ty) -> Self {
                     if 'check: {
@@ -211,7 +211,7 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
             quote! {
                 #[allow(dead_code)]
                 #[doc = "Constructs a refined value, panicking if it violates the refinement. \
-                         The check is elided only where the verifier proved it redundant."]
+                         Runtime check: the type's domain does not prove the predicate, so the check is kept."]
                 #[track_caller]
                 pub fn new(value: #inner_ty) -> Self {
                     let #variable: #inner_ty = value;
@@ -256,8 +256,29 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
         TokenStream::new()
     };
 
+    // `#[refine(proptest)]`: draws the inner type and keeps the values that pass
+    // `try_new`, so a property test sees only valid values. A very narrow
+    // refinement rejects most draws, which makes the test slow, not wrong.
+    let proptest_impl = if config.proptest {
+        quote! {
+            impl ::proptest::arbitrary::Arbitrary for #name {
+                type Parameters = ();
+                type Strategy = ::proptest::strategy::BoxedStrategy<Self>;
+                fn arbitrary_with(_: ()) -> Self::Strategy {
+                    use ::proptest::strategy::Strategy;
+                    ::proptest::arbitrary::any::<#inner_ty>()
+                        .prop_filter_map("refinement", |v| <#name>::try_new(v).ok())
+                        .boxed()
+                }
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+
     Ok(quote! {
         #serde_impl
+        #proptest_impl
 
         #[automatically_derived]
         impl #core::Refine for #name {
@@ -487,6 +508,24 @@ mod serde_tests {
     fn unknown_refine_key_names_both_options() {
         let input: DeriveInput = syn::parse_str("#[refine(flavour)] struct B(u8);").unwrap();
         let msg = expand_refine(&input).unwrap_err().to_string();
-        assert!(msg.contains("`variable` or `serde`"), "{msg}");
+        assert!(msg.contains("`proptest`"), "{msg}");
+    }
+}
+
+#[cfg(test)]
+mod proptest_tests {
+    use super::*;
+
+    #[test]
+    fn arbitrary_is_generated_only_on_request() {
+        let plain: DeriveInput = syn::parse_str("struct B(u8);").unwrap();
+        assert!(!expand_refine(&plain)
+            .unwrap()
+            .to_string()
+            .contains("Arbitrary"));
+        let opted: DeriveInput = syn::parse_str("#[refine(proptest)] struct B(u8);").unwrap();
+        let out = expand_refine(&opted).unwrap().to_string();
+        assert!(out.contains("Arbitrary"), "{out}");
+        assert!(out.contains("prop_filter_map"), "{out}");
     }
 }
