@@ -203,7 +203,8 @@ fn expand_one(decl: &ForeignItemFn, ast: &syn::File) -> syn::Result<TokenStream>
             }
         };
         let inner = if has_contract {
-            super::contract::expand(TokenStream::new(), inner)?
+            // Name the user's function in panic messages, not the private helper.
+            super::contract::expand_named(TokenStream::new(), inner, Some(c_name.as_str()))?
         } else {
             inner
         };

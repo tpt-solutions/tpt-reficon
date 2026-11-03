@@ -154,6 +154,17 @@ fn infeasible(cs: &[Constraint], int_var: Option<&str>) -> bool {
 
 /// Expands `#[contract]` on a function.
 pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> {
+    expand_named(attr, item, None)
+}
+
+/// Expands `#[contract]`, naming the function `display_name` in panic messages
+/// instead of its identifier. Generated helpers use this so that messages name
+/// the function the user wrote.
+pub(crate) fn expand_named(
+    attr: TokenStream,
+    item: TokenStream,
+    display_name: Option<&str>,
+) -> syn::Result<TokenStream> {
     if !attr.is_empty() {
         return Err(syn::Error::new(
             Span::call_site(),
@@ -234,7 +245,7 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
         .flat_map(|p| domain::domain_constraints(&p.ty, &old_var(&p.name)))
         .collect();
 
-    let fn_name = f.sig.ident.to_string();
+    let fn_name = display_name.map_or_else(|| f.sig.ident.to_string(), str::to_string);
     let ret_ty: Type = match &f.sig.output {
         ReturnType::Default => syn::parse_quote!(()),
         ReturnType::Type(_, ty) => (**ty).clone(),
