@@ -100,6 +100,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   examples run, and an MSRV (1.75.0) build job.
 
 ### Fixed
+- 2026-11 soundness review (todo.md Phase 10): repeated variables are merged
+  before elimination; `#[contract]` treats `mut` parameters without entry
+  premises at exit; a postcondition or precondition no value satisfies is a
+  compile error, including integer gaps; `ffi_wrappers!` makes a pointer
+  wrapper `unsafe fn`; `ffi_contract` checks each field's type against the
+  compile target and tracks the header; `Rat`'s `Ord` no longer panics;
+  `parse_decimal` accepts one sign only; the generated constructors are
+  `#[track_caller]`.
 - `tpt-reficon-verifier.ir.satisfies`: evaluation overflow now degrades
   conservatively to "satisfied" instead of panicking. An adversarial model
   (e.g. an `i128::MAX` value) could previously panic the constraint check used
@@ -146,6 +154,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a tautology, so it is dropped. Regression tests added.
 
 ### Changed
+- **Breaking (2026-11 review):** `Linear::add`/`sub` are now `checked_add`/
+  `checked_sub` and return `Option`. `Linear`'s fields are private: use
+  `from_parts`, `terms()`, and `constant()`. `equality_substitute` returns
+  `Option`. `prove_within_bounds` and `prove_equivalent` report new
+  `LayoutMismatch` variants.
+- **Breaking:** `Refine::from_inner_unchecked` is removed, so no public constructor
+  skips the predicate. `#[derive(Refine)]` rejects `pub` inner fields and inner
+  types that are not bare primitives (aliases and qualified paths are not
+  resolved).
+- **Breaking:** `u128` values above `i128::MAX` fail the runtime check instead of
+  wrapping negative. This refuses some valid values, and never accepts an invalid one.
 - **Deviation from `spec.txt`:** the design document describes emitting
   SMT-LIB2 queries to the `tpt-telos` solver. Because the solver was ported
   in-house and does not consume SMT-LIB2, the proc-macro frontend targets the

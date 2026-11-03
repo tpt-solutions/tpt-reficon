@@ -5,6 +5,8 @@
 **Refinement types, FFI contracts, and fractional borrows for Rust — verified
 at compile time by an in-house QF_LRA solver.**
 
+[![CI](https://github.com/tpt-solutions/tpt-reficon/actions/workflows/ci.yml/badge.svg)](https://github.com/tpt-solutions/tpt-reficon/actions/workflows/ci.yml)
+
 Dual-licensed under MIT OR Apache-2.0.
 Copyright © 2026 TPT Solutions.
 
@@ -25,7 +27,7 @@ runtime cost. Everything else gets a precise runtime check.
   refinements are compile errors; refinements implied by the type's domain run
   at zero cost; all others get an exact runtime check with great diagnostics.
 
-### Status
+## Status
 
 - **Contract-based FFI (partial, `ffi` feature)** — `#[ffi_contract(bridge = "c",
   header = "...")]` reads a `repr(C)` struct's layout from a C header (through
@@ -60,8 +62,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pct = BoundedPercentage::try_new(42)?;
     assert_eq!(*pct, 42);
 
-    // This call site is proven at compile time... but only for literals the
-    // macro can see; `new` panics on violation with a span-accurate message.
+    // `new` panics on violation. The check is compiled out only when the
+    // type's domain already implies the predicate, which `u8` does not here.
     let full = BoundedPercentage::new(100);
     assert_eq!(full.get(), 100);
 
@@ -147,7 +149,11 @@ state:
 
 - `unsafe_code` is **forbidden** across the workspace
   (`[workspace.lints.rust] unsafe_code = "forbid"`), and verified by clippy in
-  CI. There is no `unsafe` in any crate — including generated code.
+  CI. The one exception is the output of `ffi_wrappers!`: it calls C, so it
+  contains an `unsafe` call. That call is confined to a wrapper marked
+  `#[allow(unsafe_code)]`, and a wrapper that takes a raw pointer is itself
+  `unsafe fn`. A crate that forbids `unsafe_code` cannot use `ffi_wrappers!`.
+  The `#[derive(Refine)]` and `#[contract]` output contains no `unsafe`.
 - All arithmetic in the decision procedure and the macro expansion is checked
   (`checked_*`); the only runtime `panic!` emitted into generated code is the
   documented `new` constructor's violation panic.
