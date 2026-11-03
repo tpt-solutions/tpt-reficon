@@ -129,6 +129,10 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
     // carries a `'static` message and never needs to format at runtime.
     let message = format!("refinement `{render}` must hold for `{name}`");
     let msg_literal = syn::LitStr::new(&message, Span::call_site());
+    let parse_msg = syn::LitStr::new(
+        &format!("input does not parse as `{inner_render}`"),
+        Span::call_site(),
+    );
 
     // Integer inner types evaluate the runtime predicate in `i128`: the solver
     // reasons over ℚ/i64, and evaluating in the narrow inner type (e.g. u8)
@@ -266,6 +270,31 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
             }
         }
 
+        impl ::core::convert::AsRef<#inner_ty> for #name {
+            fn as_ref(&self) -> &#inner_ty {
+                &#field_access
+            }
+        }
+
+        // Displays the inner value, so a refined number prints as the number.
+        impl ::core::fmt::Display for #name {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                ::core::fmt::Display::fmt(&#field_access, f)
+            }
+        }
+
+        // Parses the inner type, then checks the refinement, so "0" fails for a
+        // non-zero type with the same error as `try_new`.
+        impl ::core::str::FromStr for #name {
+            type Err = #core::RefinementError;
+            fn from_str(s: &str) -> ::core::result::Result<Self, Self::Err> {
+                let value = <#inner_ty as ::core::str::FromStr>::from_str(s).map_err(|_| {
+                    #core::RefinementError::with_message(#parse_msg).with_value(s)
+                })?;
+                Self::try_new(value)
+            }
+        }
+
         impl #name {
             #new_fn
             #try_new_fn
@@ -380,6 +409,14 @@ mod tests {
         assert!(msg.contains("primitive inner type"), "{msg}");
         let msg = expand_err("struct B(std::primitive::u8);");
         assert!(msg.contains("primitive inner type"), "{msg}");
+    }
+
+    #[test]
+    fn derive_extras_are_generated() {
+        let out = expand_str("struct B(u8);");
+        assert!(out.contains("FromStr"), "{out}");
+        assert!(out.contains("AsRef"), "{out}");
+        assert!(out.contains("Display"), "{out}");
     }
 
     #[test]

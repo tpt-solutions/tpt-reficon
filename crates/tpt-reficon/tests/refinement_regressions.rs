@@ -1,5 +1,7 @@
 //! Regression tests for the refinement derive's runtime checks.
 
+#![allow(clippy::bool_comparison)] // `value == true` is the point of one test
+
 use tpt_reficon::prelude::*;
 
 /// Two `#[requires]` attributes, the second containing `||`. Before the fix,
@@ -83,4 +85,30 @@ fn refinement_error_reports_the_rejected_value() {
     let err = Ticket::try_new(0).unwrap_err();
     assert_eq!(err.value(), Some("0"));
     assert!(err.to_string().ends_with("(got 0)"), "{err}");
+}
+
+/// `bool` is the integers 0 and 1, so a comparison with `true` is a check.
+#[derive(Refine, Debug)]
+#[requires(value == true)]
+pub struct Enabled(bool);
+
+#[test]
+fn bool_comparison_with_a_literal_is_checked() {
+    assert!(Enabled::try_new(true).is_ok());
+    assert!(Enabled::try_new(false).is_err());
+}
+
+/// Parsing goes through the inner type and then the refinement.
+#[derive(Refine, Debug)]
+#[requires(value > 0)]
+pub struct Count(u32);
+
+#[test]
+fn refined_values_parse_display_and_borrow_as_their_inner_type() {
+    let n: Count = "42".parse().unwrap();
+    assert_eq!(n.to_string(), "42");
+    assert_eq!(*AsRef::<u32>::as_ref(&n), 42);
+    assert!("0".parse::<Count>().is_err());
+    let garbage = "x".parse::<Count>().unwrap_err();
+    assert!(garbage.to_string().contains("does not parse"), "{garbage}");
 }

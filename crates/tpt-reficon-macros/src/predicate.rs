@@ -235,7 +235,10 @@ fn linear(expr: &Expr, allowed_vars: &[String]) -> syn::Result<Linear> {
                 })?;
                 Ok(Linear::constant_only(v))
             }
-            _ => Err(unsupported(expr, "expected an integer literal")),
+            // `bool` fields are the integers 0 and 1, so `value == true` is
+            // `value == 1` over the domain `0..=1`.
+            Lit::Bool(b) => Ok(Linear::constant_only(i64::from(b.value))),
+            _ => Err(unsupported(expr, "expected an integer or bool literal")),
         },
         Expr::Unary(u) => match u.op {
             UnOp::Neg(_) => linear(&u.expr, allowed_vars)?
@@ -479,6 +482,12 @@ mod tests {
         // 2 * x < 10 and x * 3 < 9 are both linear.
         assert!(lower_str("2 * x < 10").is_ok());
         assert!(lower_str("x * 3 < 9").is_ok());
+    }
+
+    #[test]
+    fn bool_literals_are_the_integers_zero_and_one() {
+        assert!(lower_str("x == true").is_ok());
+        assert!(lower_str("x != false").is_ok());
     }
 
     #[test]
