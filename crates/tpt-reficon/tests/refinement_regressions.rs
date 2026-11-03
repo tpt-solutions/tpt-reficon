@@ -29,3 +29,58 @@ fn i64_refinement_expands_and_checks() {
     assert!(SignedFloor::try_new(-5).is_err());
     assert!(SignedFloor::try_new(i64::MAX).is_ok());
 }
+
+/// `u128` values above `i128::MAX` used to wrap negative when the predicate
+/// was widened with `as i128`, so `value < 1000` accepted `u128::MAX`.
+#[derive(Refine, Debug)]
+#[requires(value < 1000)]
+pub struct SmallWide(u128);
+
+#[test]
+fn u128_above_i128_max_is_rejected_not_wrapped() {
+    assert!(SmallWide::try_new(999).is_ok());
+    assert!(SmallWide::try_new(1000).is_err());
+    assert!(SmallWide::try_new(u128::MAX).is_err());
+}
+
+/// Negation pushed inward: outside the open range `(10, 20)`.
+#[derive(Refine, Debug)]
+#[requires(!(value > 10 && value < 20))]
+pub struct OutsideTeens(u8);
+
+#[test]
+fn negated_range_is_checked_at_runtime() {
+    assert!(OutsideTeens::try_new(5).is_ok());
+    assert!(OutsideTeens::try_new(10).is_ok());
+    assert!(OutsideTeens::try_new(15).is_err());
+    assert!(OutsideTeens::try_new(20).is_ok());
+}
+
+/// Multiplication by a constant stays linear: `2 * value < 10`.
+#[derive(Refine, Debug)]
+#[requires(value * 2 < 10)]
+pub struct DoubleBelowTen(u8);
+
+#[test]
+fn constant_multiplication_is_checked_at_runtime() {
+    assert!(DoubleBelowTen::try_new(4).is_ok());
+    assert!(DoubleBelowTen::try_new(5).is_err());
+}
+
+/// The refined-to-plain conversion is total, so `From` needs no check.
+#[derive(Refine, Debug)]
+#[requires(value >= 1)]
+pub struct Ticket(u32);
+
+#[test]
+fn refined_value_converts_into_its_inner_type() {
+    let plain: u32 = Ticket::new(7).into();
+    assert_eq!(plain, 7);
+}
+
+#[test]
+fn refinement_error_reports_the_rejected_value() {
+    let err = Ticket::try_new(0).unwrap_err();
+    assert_eq!(err.value(), Some("0"));
+    assert!(err.to_string().ends_with("(got 0)"), "{err}");
+}

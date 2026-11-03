@@ -24,3 +24,10 @@ default = []
 unstable = ["tpt-reficon-core/unstable", "tpt-reficon-macros/unstable"]
 # `#[ffi_contract]`: C header ingestion through bindgen (needs libclang at build time).
 ffi = ["tpt-reficon-macros/ffi-bindgen"]
+[package.metadata.docs.rs]
+# Not all-features: `ffi` needs libclang at build time, which docs.rs lacks.
+features = ["unstable"]
+
+[[example]]
+name = "shared_counter"
+required-features = ["unstable"]
