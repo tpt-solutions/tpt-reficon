@@ -63,12 +63,83 @@ pub fn lower(expr: &Expr, allowed_vars: &[String]) -> syn::Result<Branches> {
             Ok(out)
         }
         Expr::Binary(b) if is_comparison(&b.op) => {
-            let lhs = linear(&b.left, allowed_vars)?;
-            let rhs = linear(&b.right, allowed_vars)?;
             let rel = comparison_rel(&b.op, b.op.span())?;
-            Ok(vec![vec![Constraint(lhs.checked_sub(&rhs).ok_or_else(|| unsupported(expr, "coefficient overflow"))?, rel)]])
+            comparison_branch(expr, &b.left, &b.right, rel, allowed_vars)
         }
+        Expr::Unary(u) if matches!(u.op, UnOp::Not(_)) => lower_negated(&u.expr, allowed_vars),
         other => Err(unsupported(other, "unsupported predicate shape")),
+    }
+}
+
+/// The single-constraint branch `left (rel) right`, as `left - right (rel) 0`.
+fn comparison_branch(
+    expr: &Expr,
+    left: &Expr,
+    right: &Expr,
+    rel: Relation,
+    allowed_vars: &[String],
+) -> syn::Result<Branches> {
+    let lhs = linear(left, allowed_vars)?;
+    let rhs = linear(right, allowed_vars)?;
+    Ok(vec![vec![Constraint(
+        lhs.checked_sub(&rhs)
+            .ok_or_else(|| unsupported(expr, "coefficient overflow"))?,
+        rel,
+    )]])
+}
+
+/// Lowers `!expr` by pushing the negation inward. Comparisons flip, and
+/// De Morgan's laws turn `!(a && b)` into `!a || !b` and `!(a || b)` into
+/// `!a && !b`. The result is the DNF of the negation, not a negation of a DNF.
+fn lower_negated(expr: &Expr, allowed_vars: &[String]) -> syn::Result<Branches> {
+    match expr {
+        Expr::Paren(p) => lower_negated(&p.expr, allowed_vars),
+        Expr::Group(p) => lower_negated(&p.expr, allowed_vars),
+        Expr::Unary(u) if matches!(u.op, UnOp::Not(_)) => lower(&u.expr, allowed_vars),
+        Expr::Lit(l) => match &l.lit {
+            Lit::Bool(b) => lower(
+                &Expr::Lit(syn::ExprLit {
+                    attrs: Vec::new(),
+                    lit: Lit::Bool(syn::LitBool::new(!b.value, b.span)),
+                }),
+                allowed_vars,
+            ),
+            _ => Err(unsupported(expr, "expected a boolean predicate")),
+        },
+        Expr::Binary(b) if matches!(b.op, BinOp::And(_)) => {
+            // !(a && b) = !a || !b
+            let mut out = lower_negated(&b.left, allowed_vars)?;
+            out.extend(lower_negated(&b.right, allowed_vars)?);
+            if out.len() > MAX_DNF_BRANCHES {
+                return Err(too_many_branches(expr.span()));
+            }
+            Ok(out)
+        }
+        Expr::Binary(b) if matches!(b.op, BinOp::Or(_)) => {
+            // !(a || b) = !a && !b
+            conjoin(&[
+                lower_negated(&b.left, allowed_vars)?,
+                lower_negated(&b.right, allowed_vars)?,
+            ])
+            .ok_or_else(|| too_many_branches(b.op.span()))
+        }
+        Expr::Binary(b) if is_comparison(&b.op) => {
+            let rel = negate_relation(comparison_rel(&b.op, b.op.span())?);
+            comparison_branch(expr, &b.left, &b.right, rel, allowed_vars)
+        }
+        other => Err(unsupported(other, "cannot negate this predicate shape")),
+    }
+}
+
+/// The relation that holds exactly when `rel` does not.
+fn negate_relation(rel: Relation) -> Relation {
+    match rel {
+        Relation::Eq => Relation::Ne,
+        Relation::Ne => Relation::Eq,
+        Relation::Lt => Relation::Ge,
+        Relation::Ge => Relation::Lt,
+        Relation::Le => Relation::Gt,
+        Relation::Gt => Relation::Le,
     }
 }
 
@@ -209,9 +280,24 @@ fn linear(expr: &Expr, allowed_vars: &[String]) -> syn::Result<Linear> {
                 lhs.checked_sub(&rhs)
                     .ok_or_else(|| unsupported(expr, "coefficient overflow"))
             }
+            // Multiplication stays linear only when one side is a constant.
+            BinOp::Mul(_) => {
+                let lhs = linear(&b.left, allowed_vars)?;
+                let rhs = linear(&b.right, allowed_vars)?;
+                let (scalar, other) = if lhs.is_constant() {
+                    (lhs.constant(), rhs)
+                } else if rhs.is_constant() {
+                    (rhs.constant(), lhs)
+                } else {
+                    return Err(unsupported(expr, "multiplication of two variables is not linear"));
+                };
+                other
+                    .checked_scale(scalar)
+                    .ok_or_else(|| unsupported(expr, "coefficient overflow"))
+            }
             other => Err(syn::Error::new(
                 other.span(),
-                "unsupported binary operator in refinement predicate (expected + or -)",
+                "unsupported binary operator in refinement predicate (expected +, -, or * by a constant)",
             )),
         },
         other => Err(unsupported(
@@ -305,7 +391,9 @@ mod tests {
         let domain = vec![
             Constraint(Linear::var("value"), Relation::Ge),
             Constraint(
-                Linear::var("value").checked_add(&Linear::constant_only(-255)).unwrap(),
+                Linear::var("value")
+                    .checked_add(&Linear::constant_only(-255))
+                    .unwrap(),
                 Relation::Le,
             ),
         ];
@@ -350,5 +438,52 @@ mod tests {
         assert!(conjoin(&forms).is_none());
         // A single form is returned essentially unchanged.
         assert_eq!(conjoin(&[two]).unwrap().len(), 2);
+    }
+
+    fn lower_str(src: &str) -> syn::Result<Branches> {
+        let expr: Expr = syn::parse_str(src).unwrap();
+        lower(&expr, &["x".to_string()])
+    }
+
+    #[test]
+    fn negated_comparison_flips_the_relation() {
+        let branches = lower_str("!(x < 5)").unwrap();
+        assert_eq!(branches.len(), 1);
+        assert_eq!(branches[0][0].1, Relation::Ge);
+        let eq = lower_str("!(x == 5)").unwrap();
+        assert_eq!(eq[0][0].1, Relation::Ne);
+    }
+
+    #[test]
+    fn negated_conjunction_is_a_disjunction() {
+        // !(x > 0 && x < 9) == x <= 0 || x >= 9: two branches.
+        assert_eq!(lower_str("!(x > 0 && x < 9)").unwrap().len(), 2);
+    }
+
+    #[test]
+    fn negated_disjunction_is_a_conjunction() {
+        // !(x < 0 || x > 9) == x >= 0 && x <= 9: one branch, two constraints.
+        let branches = lower_str("!(x < 0 || x > 9)").unwrap();
+        assert_eq!(branches.len(), 1);
+        assert_eq!(branches[0].len(), 2);
+    }
+
+    #[test]
+    fn double_negation_is_identity() {
+        let branches = lower_str("!!(x == 3)").unwrap();
+        assert_eq!(branches[0][0].1, Relation::Eq);
+    }
+
+    #[test]
+    fn multiplication_by_a_constant_is_linear() {
+        // 2 * x < 10 and x * 3 < 9 are both linear.
+        assert!(lower_str("2 * x < 10").is_ok());
+        assert!(lower_str("x * 3 < 9").is_ok());
+    }
+
+    #[test]
+    fn multiplication_of_two_variables_is_rejected() {
+        let err = lower_str("x * x < 10").unwrap_err().to_string();
+        assert!(err.contains("not linear"), "{err}");
     }
 }

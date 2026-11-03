@@ -1,5 +1,5 @@
-error: unsupported binary operator in refinement predicate (expected + or -)
- --> tests/ui/fail/nonlinear.rs:4:18
+error: multiplication of two variables is not linear; the current frontend supports boolean combinations (`&&`, `||`) of linear comparisons over the refined variable (`+`, `-`, integer literals), e.g. `value > 0 && value <= 100` or `value == 0 || value == 1`
+ --> tests/ui/fail/nonlinear.rs:4:12
   |
 4 | #[requires(value * value > 5)]
-  |                  ^
+  |            ^^^^^
