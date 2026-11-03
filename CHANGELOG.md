@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AsRef<Inner>`, `Display` (the inner value), and `FromStr` (parse the inner
   type, then check the refinement). A type that already implements one of these
   itself now gets a conflicting-impl error, so remove your impl.
+- `#[refine(proptest)]`: an `Arbitrary` impl that draws the inner type and keeps
+  the values `try_new` accepts, so property tests see only valid values. Opt-in.
+  Needs the user crate to depend on proptest and to derive `Debug`.
+- Each generated constructor documents its verdict: proven by the domain, or a
+  runtime check that the domain does not prove.
 - `#[refine(serde)]` on `#[derive(Refine)]`: a `serde::Deserialize` impl that
   deserializes the inner type and then runs `try_new`. It is opt-in, and the
   user crate must depend on serde.

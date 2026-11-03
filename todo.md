@@ -164,22 +164,22 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 - [ ] Fractions: real splitting in `SharedU64` and the permission prover — open. The current accessor hands out whole units, and splitting a value's fraction needs a new encoding of the permission pool.
 
 ## Phase 13 — Adoption: Examples, Templates, Docs
-- [ ] Examples: `port`, `percentage`, `non_zero_quantity`, `money_cents`, `contract_basics`, `ffi_c_library/` (with `build.rs`), `shared_counter`; all run in CI — 6 of 7 done; `ffi_c_library/` (needs a `build.rs` and a C compiler) is not.
+- [ ] Examples: `port`, `percentage`, `non_zero_quantity`, `money_cents`, `contract_basics`, `ffi_c_library/` (with `build.rs`), `shared_counter`; all run in CI — six of seven done and run in CI. Open: `ffi_c_library/`. It needs libclang and a C compiler to build, and libclang is not installed here, so I could not run it. The CI `ffi` job is where to verify it.
 - [x] mdBook cookbook and a migration guide from `assert!`, `validator`, `nutype`, `garde`
 - [x] Extend `positioning.md` with `nutype`, Prusti, Creusot, Kani, Flux
-- [ ] `#![doc = include_str!("../README.md")]` on the facade; badges; "which tool for what" table — badge and the which-tool table are done; `include_str!` is not (the README's compile_fail and main blocks do not suit doctests).
-- [ ] `cargo-generate` starter template
+- [ ] `#![doc = include_str!("../README.md")]` on the facade; badges; "which tool for what" table — badge and the which-tool table are done. Open: `include_str!`. The README has `compile_fail` and `main` blocks that do not suit doctests, so the recommendation is to keep the facade's own short crate docs.
+- [ ] `cargo-generate` starter template — open. It needs `cargo-generate` installed to check, and the template is most useful once the crate is published.
 
 ## Phase 14 — Automation
-- [ ] `release-plz`, tag-triggered publish with dry run, `cargo-semver-checks`
-- [x] Dependabot (cargo, github-actions, gomod); scheduled `cargo deny`/audit and `cargo update`
-- [ ] Deploy mdBook to GitHub Pages; `cargo-llvm-cov`; `cargo-mutants` on the verifier; `justfile` — `justfile` is done; the others are not.
+- [ ] `release-plz`, tag-triggered publish with dry run, `cargo-semver-checks` — open. The publish and tag parts are release steps, which are outside this work. `cargo-semver-checks` needs a published baseline to compare against.
+- [x] Dependabot (cargo, github-actions, gomod); scheduled `cargo deny`/audit and `cargo update` — the scheduled run covers deny and advisories. `cargo update` is covered by Dependabot's weekly grouped updates.
+- [ ] Deploy mdBook to GitHub Pages; `cargo-llvm-cov`; `cargo-mutants` on the verifier; `justfile` — `justfile` is done. Open: the Pages deploy (a publish step), `cargo-llvm-cov` and `cargo-mutants` (new CI jobs that I could not run locally).
 
 ## Phase 15 — Innovation (after v0.1.0)
-- [ ] Tri-state solver result `Valid | Invalid(model) | Unknown(reason)`, unsat cores, counterexamples in compile errors
-- [ ] Integer tightening (gcd normalisation, strict-bound tightening) to close the ℚ/ℤ gap
-- [ ] `cargo reficon explain <Type>` plus a CI gate on new runtime checks
-- [ ] Elision verdict in generated rustdoc on `new`
-- [ ] Predicate-derived `proptest`/`arbitrary` strategies
-- [ ] `refined!(Type, literal)` compile-time constructor
-- [ ] Header-watch `build.rs` helper and drift check; cross-target layout `--check`
+- [ ] Tri-state solver result `Valid | Invalid(model) | Unknown(reason)`, unsat cores, counterexamples in compile errors — open. The verifier already returns `Sat`, `Unsat` or `Unknown`, which is most of the tri-state. Unsat cores are a new solver feature.
+- [ ] Integer tightening (gcd normalisation, strict-bound tightening) to close the ℚ/ℤ gap — open. The single-variable integer analysis is already exact. The multi-variable gap needs gcd normalisation in the solver.
+- [ ] `cargo reficon explain <Type>` plus a CI gate on new runtime checks — open. It needs a CLI crate.
+- [x] Elision verdict in generated rustdoc on `new` — each constructor now says whether its check was proven by the domain or kept at runtime.
+- [x] Predicate-derived `proptest`/`arbitrary` strategies — `#[refine(proptest)]` writes an `Arbitrary` impl that draws the inner type and keeps the values `try_new` accepts. Opt-in, like serde.
+- [ ] `refined!(Type, literal)` compile-time constructor — open. A runtime-check predicate cannot be evaluated at compile time without `const` checks, which the derive does not emit yet.
+- [ ] Header-watch `build.rs` helper and drift check; cross-target layout `--check` — open. The header-watch part is already covered by `include_bytes!` in `#[ffi_contract]`. The `build.rs` helper and the cross-target check need a design.

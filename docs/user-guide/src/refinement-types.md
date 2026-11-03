@@ -57,3 +57,10 @@ pub struct Port(u16);
 ```
 
 Do not also derive `Deserialize` on the type: the attribute writes that impl.
+
+## Generating valid values for property tests
+
+`#[refine(proptest)]` gives the type an `Arbitrary` impl. It draws the inner
+type and keeps the values that pass `try_new`, so `any::<Percent>()` yields only
+valid values. The impl needs proptest in your crate, and the type needs `Debug`.
+A very narrow refinement rejects most draws, which makes the test slow.
