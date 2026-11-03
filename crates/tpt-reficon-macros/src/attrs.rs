@@ -10,6 +10,8 @@ pub struct RefineConfig {
     pub predicates: Vec<Expr>,
     /// The variable name used for the inner value inside predicates.
     pub variable: String,
+    /// Whether `#[refine(serde)]` asked for a `Deserialize` impl.
+    pub serde: bool,
 }
 
 /// Parses all helper attributes present on the struct.
@@ -19,6 +21,7 @@ pub fn parse_config(
 ) -> syn::Result<RefineConfig> {
     let mut predicates = Vec::new();
     let mut variable: Option<String> = None;
+    let mut serde = false;
 
     for attr in attrs {
         if attr.path().is_ident("requires") || attr.path().is_ident("ensures") {
@@ -38,6 +41,15 @@ pub fn parse_config(
                             ));
                         }
                     }
+                    RefineItem::Serde => {
+                        if serde {
+                            return Err(syn::Error::new(
+                                attr.span(),
+                                "`refine(serde)` may only be specified once",
+                            ));
+                        }
+                        serde = true;
+                    }
                 }
             }
         }
@@ -50,21 +62,26 @@ pub fn parse_config(
     Ok(RefineConfig {
         predicates,
         variable,
+        serde,
     })
 }
 
-/// One `key = value` pair inside `#[refine(...)]`.
+/// One item inside `#[refine(...)]`: `variable = "name"` or the bare `serde`.
 enum RefineItem {
     Variable { value: LitStr },
+    Serde,
 }
 
 impl syn::parse::Parse for RefineItem {
     fn parse(input: syn::parse::ParseStream<'_>) -> syn::Result<Self> {
         let name: Ident = input.parse()?;
+        if name == "serde" {
+            return Ok(RefineItem::Serde);
+        }
         if name != "variable" {
             return Err(syn::Error::new(
                 name.span(),
-                "unknown `refine(...)` key; expected `variable`",
+                "unknown `refine(...)` key; expected `variable` or `serde`",
             ));
         }
         input.parse::<syn::Token![=]>()?;

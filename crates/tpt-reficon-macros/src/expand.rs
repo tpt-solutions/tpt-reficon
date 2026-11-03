@@ -237,7 +237,28 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
         )
     };
 
+    // `#[refine(serde)]`: deserialize the inner type, then check the refinement,
+    // so untrusted input cannot build an invalid value. The user crate must depend
+    // on serde for this to compile, which is why it is opt-in.
+    let serde_impl = if config.serde {
+        quote! {
+            impl<'de> ::serde::Deserialize<'de> for #name {
+                fn deserialize<D>(deserializer: D) -> ::core::result::Result<Self, D::Error>
+                where
+                    D: ::serde::Deserializer<'de>,
+                {
+                    let value = <#inner_ty as ::serde::Deserialize<'de>>::deserialize(deserializer)?;
+                    Self::try_new(value).map_err(<D::Error as ::serde::de::Error>::custom)
+                }
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+
     Ok(quote! {
+        #serde_impl
+
         #[automatically_derived]
         impl #core::Refine for #name {
             type Inner = #inner_ty;
@@ -442,5 +463,30 @@ mod panic_free_tests {
     fn invalid_variable_name_is_an_error_not_a_panic() {
         let msg = expand_err("#[refine(variable = \"1x\")] #[requires(value < 5)] struct B(u8);");
         assert!(msg.contains("not a valid variable name"), "{msg}");
+    }
+}
+
+#[cfg(test)]
+mod serde_tests {
+    use super::*;
+
+    fn expand_str(src: &str) -> String {
+        let input: DeriveInput = syn::parse_str(src).unwrap();
+        expand_refine(&input).unwrap().to_string()
+    }
+
+    #[test]
+    fn deserialize_is_generated_only_on_request() {
+        assert!(!expand_str("struct B(u8);").contains("Deserialize"));
+        let out = expand_str("#[refine(serde)] struct B(u8);");
+        assert!(out.contains("Deserialize"), "{out}");
+        assert!(out.contains("try_new"), "{out}");
+    }
+
+    #[test]
+    fn unknown_refine_key_names_both_options() {
+        let input: DeriveInput = syn::parse_str("#[refine(flavour)] struct B(u8);").unwrap();
+        let msg = expand_refine(&input).unwrap_err().to_string();
+        assert!(msg.contains("`variable` or `serde`"), "{msg}");
     }
 }
