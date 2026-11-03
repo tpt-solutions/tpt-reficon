@@ -35,7 +35,7 @@ use quote::{format_ident, quote};
 #[cfg(feature = "ffi-bindgen")]
 use syn::spanned::Spanned;
 #[cfg(feature = "ffi-bindgen")]
-use syn::{Attribute, FnArg, ForeignItem, Item, ReturnType, Type};
+use syn::{Attribute, FnArg, ForeignItem, Item, PointerMutability, ReturnType, Type};
 
 /// Parsed `ffi_wrappers!` input: the header, the bridge, and the declarations.
 #[cfg_attr(not(feature = "ffi-bindgen"), allow(dead_code))]
@@ -329,10 +329,9 @@ fn canonical(ty: &Type) -> syn::Result<String> {
             Ok(mapped.to_string())
         }
         Type::Ptr(p) => {
-            let mutability = if p.mutability.is_some() {
-                "mut"
-            } else {
-                "const"
+            let mutability = match p.mutability {
+                PointerMutability::Mut(_) => "mut",
+                PointerMutability::Const(_) => "const",
             };
             Ok(format!("*{mutability} {}", canonical(&p.elem)?))
         }
