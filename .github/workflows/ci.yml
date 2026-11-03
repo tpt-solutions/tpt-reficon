@@ -4,6 +4,9 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  # Weekly run, so new RustSec advisories and licence findings surface without a push.
+  schedule:
+    - cron: "0 6 * * 1"
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
@@ -26,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
@@ -34,26 +37,85 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
-    name: test
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+      # The trybuild UI snapshots compare compiler output, which is why this
+      # job is pinned to the same toolchain as the lint job.
+      - name: Run tests
+        run: cargo test --workspace
+      - name: Run unstable accessor and facade tests
+        run: |
+          cargo test -p tpt-reficon-core --features unstable
+          cargo test -p tpt-reficon --features unstable
+
+  doc:
+    name: rustdoc
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Build API docs with warnings denied
+        run: cargo doc --workspace --no-deps
+
+  book:
+    name: mdBook (build and test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.88.0
       - uses: Swatinem/rust-cache@v2
-      - name: Run tests
-        run: cargo test --workspace
-      - name: Run unstable accessor tests
-        run: cargo test -p tpt-reficon-core --features unstable
+      - uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: "0.5.4"
+      # `mdbook test` cannot pass `--extern`, so it finds the crates through
+      # `-L`. Build them into their own target directory first, so that only
+      # one `tpt_reficon` rlib is there to find. The book uses `unstable`.
+      - name: Build the crates the book links against
+        run: CARGO_TARGET_DIR=target/book cargo build -p tpt-reficon --features unstable
+      - name: Build the book
+        run: mdbook build docs/user-guide
+      - name: Test the book's code blocks
+        run: mdbook test docs/user-guide -L target/book/debug/deps
+
+  go:
+    name: go test (cgo layout)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Check the Go struct layout against the C header
+        working-directory: crates/tpt-reficon/tests/go/payment
+        run: go test ./...
 
   examples:
     name: examples
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.88.0
       - uses: Swatinem/rust-cache@v2
       - name: Build and run examples
-        run: cargo run --workspace --example refinement_types
+        run: |
+          cargo run -p tpt-reficon --example refinement_types
+          cargo run -p tpt-reficon --example port
+          cargo run -p tpt-reficon --example percentage
+          cargo run -p tpt-reficon --example non_zero_quantity
+          cargo run -p tpt-reficon --example money_cents
+          cargo run -p tpt-reficon --example contract_basics
+          cargo run -p tpt-reficon --example shared_counter --features unstable
 
   msrv:
     name: "MSRV (1.75.0)"
@@ -64,15 +126,26 @@ jobs:
         with:
           toolchain: 1.75.0
       - uses: Swatinem/rust-cache@v2
+      # Cargo.lock is not committed, so resolve it here with stable cargo in
+      # MSRV-fallback mode: the 1.75 resolver would otherwise pick crates that
+      # require a newer toolchain (e.g. hashbrown 0.17 needs edition 2024).
+      - name: Resolve MSRV-compatible lockfile
+        run: cargo +stable generate-lockfile
+        env:
+          CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: fallback
       - name: Build on MSRV
-        run: cargo build --workspace
+        run: cargo +1.75.0 build --workspace
+      # Compiling the tests also catches APIs newer than the MSRV, such as
+      # `core::error::Error` before Rust 1.81, which a build alone misses.
+      - name: Compile the tests on MSRV
+        run: cargo +1.75.0 test --workspace --no-run
 
   ffi:
     name: ffi contracts (bindgen, libclang)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.88.0
       - uses: Swatinem/rust-cache@v2
       - name: Install libclang
         run: sudo apt-get update && sudo apt-get install -y libclang-dev
@@ -82,6 +155,11 @@ jobs:
         run: cargo test -p tpt-reficon-macros --features ffi-bindgen
       - name: Test safe C wrappers
         run: cargo test --manifest-path crates/tpt-reficon-ffi-tests/Cargo.toml
+      - name: Check every feature combination
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hack
+      - run: cargo hack check --workspace --each-feature --no-dev-deps
 
   fuzz:
     name: fuzz (cargo-fuzz, solver)

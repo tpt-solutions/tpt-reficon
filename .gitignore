@@ -10,3 +10,6 @@ Cargo.lock
 fuzz/target
 fuzz/corpus
 fuzz/artifacts
+
+# mdBook output (docs/user-guide/book)
+docs/user-guide/book
