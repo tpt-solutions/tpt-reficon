@@ -43,7 +43,7 @@ pub fn analyze(constraints: &[Constraint], var: &str) -> IntegerFeasibility {
 
     for Constraint(lin, rel) in constraints {
         let mut coeff: i64 = 0;
-        for (name, c) in &lin.terms {
+        for (name, c) in lin.terms() {
             if name == var {
                 match coeff.checked_add(*c) {
                     Some(x) => coeff = x,
@@ -57,7 +57,7 @@ pub fn analyze(constraints: &[Constraint], var: &str) -> IntegerFeasibility {
         if coeff == 0 {
             // Independent of the variable: a constant assertion. Decided
             // exactly over the rationals, hence also over the integers.
-            let constant_only = Constraint(Linear::constant_only(lin.constant), *rel);
+            let constant_only = Constraint(Linear::constant_only(lin.constant()), *rel);
             if !satisfies(&constant_only, &Model::new()) {
                 return Infeasible;
             }
@@ -66,7 +66,7 @@ pub fn analyze(constraints: &[Constraint], var: &str) -> IntegerFeasibility {
 
         // `coeff * var + constant (rel) 0`  ⇔  `var (rel') -constant / coeff`.
         let a = i128::from(coeff);
-        let b = i128::from(lin.constant);
+        let b = i128::from(lin.constant());
         let value = match Rat::new(-b, a) {
             Some(v) => v,
             None => return Unknown,
@@ -255,14 +255,12 @@ mod tests {
 
     /// `a * v + b` (as a `Linear`).
     fn lin(a: i64, b: i64) -> Linear {
-        Linear {
-            terms: if a == 0 {
-                Vec::new()
-            } else {
-                vec![("v".to_string(), a)]
-            },
-            constant: b,
-        }
+        let terms = if a == 0 {
+            Vec::new()
+        } else {
+            vec![("v".to_string(), a)]
+        };
+        Linear::from_parts(terms, b).unwrap()
     }
 
     fn c(a: i64, b: i64, rel: Relation) -> Constraint {
@@ -342,13 +340,7 @@ mod tests {
 
     #[test]
     fn extra_variable_is_unknown() {
-        let other = Constraint(
-            Linear {
-                terms: vec![("w".to_string(), 1)],
-                constant: 0,
-            },
-            Relation::Ge,
-        );
+        let other = Constraint(Linear::var("w"), Relation::Ge);
         assert_eq!(analyze(&[other], "v"), Unknown);
     }
 

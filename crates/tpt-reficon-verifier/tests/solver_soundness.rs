@@ -37,18 +37,9 @@ fn term() -> impl Strategy<Value = (String, i64)> {
 /// A random linear expression over 1..=3 of the three named variables.
 fn linear() -> impl Strategy<Value = Linear> {
     (prop::collection::vec(term(), 1..=3), -4i64..=4)
-        .prop_map(|(terms, constant)| {
-            let mut lin = Linear::default();
-            for (v, c) in terms {
-                lin = lin.add(&Linear {
-                    terms: vec![(v, c)],
-                    constant: 0,
-                });
-            }
-            lin.constant = lin.constant.saturating_add(constant);
-            lin
-        })
-        .prop_filter("must mention a variable", |l| !l.terms.is_empty())
+        // Coefficients and sizes are tiny, so the merge cannot overflow.
+        .prop_map(|(terms, constant)| Linear::from_parts(terms, constant).unwrap())
+        .prop_filter("must mention a variable", |l| !l.terms().is_empty())
 }
 
 fn relation() -> impl Strategy<Value = Relation> {
@@ -78,8 +69,8 @@ fn constraint_system() -> impl Strategy<Value = Vec<Constraint>> {
         .prop_map(|(inject, mut cs, b)| {
             if inject {
                 let x = Linear::var("x");
-                let gi = Constraint(x.sub(&Linear::constant_only(b)), Relation::Ge); // x >= b
-                let le = Constraint(x.sub(&Linear::constant_only(b - 1)), Relation::Le); // x <= b-1
+                let gi = Constraint(x.checked_sub(&Linear::constant_only(b)).unwrap(), Relation::Ge); // x >= b
+                let le = Constraint(x.checked_sub(&Linear::constant_only(b - 1)).unwrap(), Relation::Le); // x <= b-1
                 cs.push(gi);
                 cs.push(le);
             }
@@ -106,9 +97,9 @@ fn candidate_values(cs: &[Constraint]) -> BTreeMap<String, Vec<Rat>> {
     let grid: Vec<Rat> = grid();
     let mut per_var: BTreeMap<String, BTreeSet<Rat>> = BTreeMap::new();
     for Constraint(lin, _) in cs {
-        for (v, c) in &lin.terms {
+        for (v, c) in lin.terms() {
             if let Some(boundary) =
-                Rat::from_i128(-(lin.constant as i128)).checked_div(Rat::from_i128(*c as i128))
+                Rat::from_i128(-(lin.constant() as i128)).checked_div(Rat::from_i128(*c as i128))
             {
                 per_var.entry(v.clone()).or_default().insert(boundary);
             }
@@ -116,7 +107,7 @@ fn candidate_values(cs: &[Constraint]) -> BTreeMap<String, Vec<Rat>> {
     }
     // Ensure every mentioned variable has a candidate set (grid fallback).
     for Constraint(lin, _) in cs {
-        for (v, _) in &lin.terms {
+        for (v, _) in lin.terms() {
             per_var
                 .entry(v.clone())
                 .or_default()
@@ -134,7 +125,7 @@ fn candidate_values(cs: &[Constraint]) -> BTreeMap<String, Vec<Rat>> {
 fn brute_witness(cs: &[Constraint]) -> Option<Model> {
     let vars: BTreeSet<String> = cs
         .iter()
-        .flat_map(|Constraint(lin, _)| lin.terms.iter().map(|(v, _)| v.clone()))
+        .flat_map(|Constraint(lin, _)| lin.terms().iter().map(|(v, _)| v.clone()))
         .collect();
     if vars.is_empty() {
         return if satisfies_all(cs, &Model::new()) {

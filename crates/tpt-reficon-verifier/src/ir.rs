@@ -50,14 +50,17 @@ impl fmt::Display for Relation {
 /// A linear expression: `sum((var_i, coeff_i)) + constant`.
 ///
 /// Coefficients are exact `i64`; the solver widens to rational arithmetic
-/// internally. Duplicate variables in `terms` should be avoided (the
-/// constructors merge them).
+/// internally. The fields are private so that every expression goes through a
+/// constructor that merges repeated variables, and every combination is
+/// checked: an overflowing coefficient is reported as `None`, never wrapped
+/// or saturated into a different constraint.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Linear {
-    /// `(variable name, coefficient)` pairs; zero coefficients removed.
-    pub terms: Vec<(String, i64)>,
+    /// `(variable name, coefficient)` pairs, one per variable; zero
+    /// coefficients removed.
+    terms: Vec<(String, i64)>,
     /// Additive constant.
-    pub constant: i64,
+    constant: i64,
 }
 
 impl Linear {
@@ -77,39 +80,61 @@ impl Linear {
         }
     }
 
+    /// Builds an expression from raw parts, merging repeated variables.
+    ///
+    /// Returns `None` when a merged coefficient overflows `i64`.
+    pub fn from_parts(terms: Vec<(String, i64)>, constant: i64) -> Option<Linear> {
+        let mut out = Linear::constant_only(constant);
+        for (v, c) in terms {
+            out.add_term(&v, c)?;
+        }
+        Some(out)
+    }
+
+    /// The `(variable, coefficient)` pairs, one entry per variable.
+    pub fn terms(&self) -> &[(String, i64)] {
+        &self.terms
+    }
+
+    /// The additive constant.
+    pub fn constant(&self) -> i64 {
+        self.constant
+    }
+
     /// True if the expression mentions no variables.
     pub fn is_constant(&self) -> bool {
         self.terms.is_empty()
     }
 
-    /// Adds two expressions, merging like terms.
-    pub fn add(&self, rhs: &Linear) -> Linear {
-        let mut out = self.clone();
-        out.constant = out.constant.saturating_add(rhs.constant);
-        for (v, c) in &rhs.terms {
-            if let Some(slot) = out.terms.iter_mut().find(|(vv, _)| vv == v) {
-                slot.1 = slot.1.saturating_add(*c);
-            } else {
-                out.terms.push((v.clone(), *c));
-            }
+    /// Adds `c · v` to the expression, merging with an existing entry for `v`.
+    fn add_term(&mut self, v: &str, c: i64) -> Option<()> {
+        if let Some(slot) = self.terms.iter_mut().find(|(vv, _)| vv == v) {
+            slot.1 = slot.1.checked_add(c)?;
+        } else {
+            self.terms.push((v.to_string(), c));
         }
-        out.terms.retain(|(_, c)| *c != 0);
-        out
+        self.terms.retain(|(_, c)| *c != 0);
+        Some(())
     }
 
-    /// Subtracts `rhs` from `self`.
-    pub fn sub(&self, rhs: &Linear) -> Linear {
+    /// Adds two expressions, merging like terms. `None` on overflow.
+    pub fn checked_add(&self, rhs: &Linear) -> Option<Linear> {
+        self.combine(rhs, false)
+    }
+
+    /// Subtracts `rhs` from `self`. `None` on overflow.
+    pub fn checked_sub(&self, rhs: &Linear) -> Option<Linear> {
+        self.combine(rhs, true)
+    }
+
+    fn combine(&self, rhs: &Linear, negate: bool) -> Option<Linear> {
+        let signed = |c: i64| if negate { c.checked_neg() } else { Some(c) };
         let mut out = self.clone();
-        out.constant = out.constant.saturating_sub(rhs.constant);
+        out.constant = out.constant.checked_add(signed(rhs.constant)?)?;
         for (v, c) in &rhs.terms {
-            if let Some(slot) = out.terms.iter_mut().find(|(vv, _)| vv == v) {
-                slot.1 = slot.1.saturating_sub(*c);
-            } else {
-                out.terms.push((v.clone(), -*c));
-            }
+            out.add_term(v, signed(*c)?)?;
         }
-        out.terms.retain(|(_, c)| *c != 0);
-        out
+        Some(out)
     }
 
     /// Multiplies all terms and the constant by an integer scalar.
@@ -253,33 +278,31 @@ pub fn negate(constraint: &Constraint) -> Vec<Vec<Constraint>> {
     }
 }
 
-/// Substitutes `var := expr` in a linear expression.
-fn substitute_linear(lin: &Linear, var: &str, expr: &Linear) -> Linear {
-    let mut out = Linear {
-        terms: Vec::new(),
-        constant: lin.constant,
-    };
+/// Substitutes `var := expr` in a linear expression. `None` on overflow.
+fn substitute_linear(lin: &Linear, var: &str, expr: &Linear) -> Option<Linear> {
+    let mut out = Linear::constant_only(lin.constant);
     for (v, c) in &lin.terms {
         if v == var {
-            let scaled = expr.checked_scale(*c).expect("substitute scale overflow");
-            out = out.add(&scaled);
+            out = out.checked_add(&expr.checked_scale(*c)?)?;
         } else {
-            out.terms.push((v.clone(), *c));
+            out.add_term(v, *c)?;
         }
     }
-    out
+    Some(out)
 }
 
 /// Rewrites every constraint using the equality `lhs_var == rhs` to eliminate
 /// the variable occurrence, mirroring upstream `equality_substitute`.
+///
+/// Returns `None` when a rewritten coefficient overflows.
 pub fn equality_substitute(
     constraints: &[Constraint],
     lhs_var: &str,
     rhs: &Linear,
-) -> Vec<Constraint> {
+) -> Option<Vec<Constraint>> {
     constraints
         .iter()
-        .map(|Constraint(lin, rel)| Constraint(substitute_linear(lin, lhs_var, rhs), *rel))
+        .map(|Constraint(lin, rel)| Some(Constraint(substitute_linear(lin, lhs_var, rhs)?, *rel)))
         .collect()
 }
 
@@ -289,14 +312,48 @@ mod tests {
 
     #[test]
     fn linear_arithmetic_merges_terms() {
-        let a = Linear::var("x").add(&Linear::constant_only(3));
-        let b = Linear::var("x").add(&Linear::var("y"));
-        let sum = a.add(&b);
-        assert_eq!(sum.terms, vec![("x".to_string(), 2), ("y".to_string(), 1)]);
-        assert_eq!(sum.constant, 3);
+        let a = Linear::var("x")
+            .checked_add(&Linear::constant_only(3))
+            .unwrap();
+        let b = Linear::var("x").checked_add(&Linear::var("y")).unwrap();
+        let sum = a.checked_add(&b).unwrap();
+        assert_eq!(
+            sum.terms(),
+            [("x".to_string(), 2), ("y".to_string(), 1)].as_slice()
+        );
+        assert_eq!(sum.constant(), 3);
 
-        let diff = a.sub(&b);
+        let diff = a.checked_sub(&b).unwrap();
         assert_eq!(diff.render(), "-y + 3");
+    }
+
+    #[test]
+    fn arithmetic_overflow_is_reported_not_saturated() {
+        // i64::MAX + 1 must not saturate to i64::MAX: that would be a
+        // different constraint, not a conservative one.
+        let big = Linear::constant_only(i64::MAX);
+        assert_eq!(big.checked_add(&Linear::constant_only(1)), None);
+        assert_eq!(
+            Linear::constant_only(i64::MIN).checked_sub(&Linear::constant_only(1)),
+            None
+        );
+        // Coefficients merge with checked arithmetic too.
+        let x2 = Linear::from_parts(vec![("x".into(), i64::MAX)], 0).unwrap();
+        assert_eq!(x2.checked_add(&Linear::var("x")), None);
+        // Negating i64::MIN on the subtraction path is also an overflow.
+        assert_eq!(Linear::constant_only(0).checked_sub(&Linear::constant_only(i64::MIN)), None);
+    }
+
+    #[test]
+    fn from_parts_merges_duplicate_variables() {
+        let l = Linear::from_parts(
+            vec![("x".into(), 2), ("y".into(), 1), ("x".into(), -2)],
+            4,
+        )
+        .unwrap();
+        // The two `x` entries cancel and drop out entirely.
+        assert_eq!(l.terms(), [("y".to_string(), 1)].as_slice());
+        assert_eq!(l.constant(), 4);
     }
 
     #[test]
@@ -306,7 +363,8 @@ mod tests {
             Linear::var("x")
                 .checked_scale(2)
                 .unwrap()
-                .add(&Linear::constant_only(10)),
+                .checked_add(&Linear::constant_only(10))
+                .unwrap(),
             Relation::Le,
         );
         let mut m = Model::new();
@@ -332,8 +390,11 @@ mod tests {
     fn substitute_removes_variable() {
         // x == y + 1 ; constraint x >= 0 becomes y + 1 >= 0
         let cs = [Constraint(Linear::var("x"), Relation::Ge)];
-        let out = equality_substitute(&cs, "x", &Linear::var("y").add(&Linear::constant_only(1)));
-        assert_eq!(out[0].0, Linear::var("y").add(&Linear::constant_only(1)));
+        let y_plus_1 = Linear::var("y")
+            .checked_add(&Linear::constant_only(1))
+            .unwrap();
+        let out = equality_substitute(&cs, "x", &y_plus_1).unwrap();
+        assert_eq!(out[0].0, y_plus_1);
     }
 
     #[test]
@@ -345,7 +406,8 @@ mod tests {
         let l = Linear::var("x")
             .checked_scale(-1)
             .unwrap()
-            .add(&Linear::constant_only(-4));
+            .checked_add(&Linear::constant_only(-4))
+            .unwrap();
         assert_eq!(l.render(), "-x - 4");
     }
 
@@ -354,7 +416,9 @@ mod tests {
         // An adversarial model with an i128::MAX value must not make
         // `satisfies` panic; it must degrade to "satisfied" (cannot verify).
         let c = Constraint(
-            Linear::var("x").add(&Linear::constant_only(1)),
+            Linear::var("x")
+                .checked_add(&Linear::constant_only(1))
+                .unwrap(),
             Relation::Le,
         );
         let mut m = Model::new();

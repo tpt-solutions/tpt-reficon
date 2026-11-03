@@ -48,9 +48,12 @@ pub fn check_configuration(holders: &[Access]) -> Result<(), Interference> {
     let mut cs = Vec::with_capacity(holders.len() * 2 + 1);
 
     // Pool invariant: Σ q_i − 1 ≤ 0.
+    let overflow = || Interference::Undecided("permission constraint overflows i64".into());
     let mut total = Linear::constant_only(-1);
     for name in &names {
-        total = total.add(&Linear::var(name.clone()));
+        total = total
+            .checked_add(&Linear::var(name.clone()))
+            .ok_or_else(overflow)?;
     }
     cs.push(Constraint(total, Relation::Le));
 
@@ -60,7 +63,9 @@ pub fn check_configuration(holders: &[Access]) -> Result<(), Interference> {
         if *access == Access::Write {
             // A writer holds the whole unit: q_i − 1 = 0.
             cs.push(Constraint(
-                Linear::var(name.clone()).add(&Linear::constant_only(-1)),
+                Linear::var(name.clone())
+                    .checked_add(&Linear::constant_only(-1))
+                    .ok_or_else(overflow)?,
                 Relation::Eq,
             ));
         }

@@ -202,6 +202,41 @@ pub enum LayoutMismatch {
         /// Position of the offending field.
         index: usize,
     },
+    /// The offset list does not have one entry per field.
+    OffsetsLengthMismatch {
+        /// Number of fields.
+        fields: usize,
+        /// Number of offsets supplied.
+        offsets: usize,
+    },
+    /// A field's offset is not a multiple of its alignment.
+    MisalignedField {
+        /// Position of the misaligned field.
+        index: usize,
+        /// The offset, in bytes.
+        offset: u64,
+        /// The field's alignment, in bytes.
+        align: u32,
+    },
+    /// The struct's total size is not a multiple of its alignment.
+    MisalignedSize {
+        /// The struct size, in bytes.
+        size: u64,
+        /// The struct alignment, in bytes.
+        align: u32,
+    },
+    /// The struct's alignment is not the maximum of its fields' alignments.
+    StructAlignMismatch {
+        /// The maximum field alignment, in bytes.
+        expected: u32,
+        /// The alignment the layout declares, in bytes.
+        found: u32,
+    },
+    /// A struct with no fields has a non-zero size.
+    EmptyStructSize {
+        /// The declared size, in bytes.
+        size: u64,
+    },
 }
 
 impl core::fmt::Display for LayoutMismatch {
@@ -262,6 +297,31 @@ impl core::fmt::Display for LayoutMismatch {
                     "field #{index} extent exceeds struct bounds (or overlaps the next field)"
                 )
             }
+            LayoutMismatch::OffsetsLengthMismatch { fields, offsets } => {
+                write!(f, "{offsets} offsets supplied for {fields} fields")
+            }
+            LayoutMismatch::MisalignedField {
+                index,
+                offset,
+                align,
+            } => {
+                write!(
+                    f,
+                    "field #{index} at offset {offset}B is not aligned to {align}B"
+                )
+            }
+            LayoutMismatch::MisalignedSize { size, align } => {
+                write!(f, "struct size {size}B is not a multiple of its {align}B alignment")
+            }
+            LayoutMismatch::StructAlignMismatch { expected, found } => {
+                write!(
+                    f,
+                    "struct alignment {found} does not match the maximum field alignment {expected}"
+                )
+            }
+            LayoutMismatch::EmptyStructSize { size } => {
+                write!(f, "a struct with no fields must have size 0, not {size}B")
+            }
         }
     }
 }
@@ -284,6 +344,13 @@ pub fn prove_equivalent(
         return Err(LayoutMismatch::FieldCountMismatch {
             rust: rust.fields.len(),
             foreign: foreign.fields.len(),
+        });
+    }
+    // Indexed below, so a foreign layout with short offsets must not panic.
+    if foreign.offsets.len() != foreign.fields.len() {
+        return Err(LayoutMismatch::OffsetsLengthMismatch {
+            fields: foreign.fields.len(),
+            offsets: foreign.offsets.len(),
         });
     }
     for i in 0..rust.fields.len() {
@@ -334,16 +401,16 @@ fn layout_premises(layout: &StructLayout) -> Option<Vec<Constraint>> {
         let off_var = Linear::var(format!("off_{i}"));
         let size_var = Linear::var(format!("size_{i}"));
         out.push(Constraint(
-            off_var.add(&Linear::constant_only(-(off as i64))),
+            off_var.checked_add(&Linear::constant_only(-(off as i64)))?,
             Relation::Eq,
         ));
         out.push(Constraint(
-            size_var.add(&Linear::constant_only(-(f.size as i64))),
+            size_var.checked_add(&Linear::constant_only(-(f.size as i64)))?,
             Relation::Eq,
         ));
     }
     out.push(Constraint(
-        Linear::var("total_size").add(&Linear::constant_only(-(layout.size as i64))),
+        Linear::var("total_size").checked_add(&Linear::constant_only(-(layout.size as i64)))?,
         Relation::Eq,
     ));
     Some(out)
@@ -363,6 +430,20 @@ fn i64_for(name: &str, v: u64) -> Result<i64, LayoutMismatch> {
 /// conservative failure (overflow, out-of-range) surfaces as a
 /// [`LayoutMismatch`], never as a silent pass.
 pub fn prove_within_bounds(layout: &StructLayout) -> Result<(), LayoutMismatch> {
+    if layout.offsets.len() != layout.fields.len() {
+        return Err(LayoutMismatch::OffsetsLengthMismatch {
+            fields: layout.fields.len(),
+            offsets: layout.offsets.len(),
+        });
+    }
+    // No fields means no extents to prove: the only obligation is size 0.
+    let Some(last) = layout.fields.len().checked_sub(1) else {
+        return match layout.size {
+            0 => Ok(()),
+            size => Err(LayoutMismatch::EmptyStructSize { size }),
+        };
+    };
+
     // Guard i64 range explicitly first so the `-` conversions in
     // `layout_premises` can never silently wrap.
     for (i, (&off, f)) in layout.offsets.iter().zip(&layout.fields).enumerate() {
@@ -371,22 +452,26 @@ pub fn prove_within_bounds(layout: &StructLayout) -> Result<(), LayoutMismatch> 
     }
     i64_for("total_size", layout.size)?;
 
-    let premises = layout_premises(layout).expect("range-checked above");
+    let premises = layout_premises(layout).ok_or(LayoutMismatch::RustLayoutOverflow)?;
+    let var = |name: String| Linear::var(name);
+    let overflow = || LayoutMismatch::RustLayoutOverflow;
 
     for i in 0..layout.fields.len() {
         // off_i + size_i <= total_size
-        let fits = Linear::var(format!("off_{i}"))
-            .add(&Linear::var(format!("size_{i}")))
-            .sub(&Linear::var("total_size"));
+        let fits = var(format!("off_{i}"))
+            .checked_add(&var(format!("size_{i}")))
+            .and_then(|e| e.checked_sub(&var("total_size".into())))
+            .ok_or_else(overflow)?;
         if !entails(&premises, &Constraint(fits, Relation::Le)) {
             return Err(LayoutMismatch::ExtentExceedsStruct { index: i });
         }
 
         // off_{i-1} + size_{i-1} <= off_i  (previous extent precedes this one)
         if i > 0 {
-            let prev = Linear::var(format!("off_{}", i - 1))
-                .add(&Linear::var(format!("size_{}", i - 1)))
-                .sub(&Linear::var(format!("off_{i}")));
+            let prev = var(format!("off_{}", i - 1))
+                .checked_add(&var(format!("size_{}", i - 1)))
+                .and_then(|e| e.checked_sub(&var(format!("off_{i}"))))
+                .ok_or_else(overflow)?;
             if !entails(&premises, &Constraint(prev, Relation::Le)) {
                 return Err(LayoutMismatch::ExtentExceedsStruct { index: i });
             }
@@ -395,19 +480,47 @@ pub fn prove_within_bounds(layout: &StructLayout) -> Result<(), LayoutMismatch> 
 
     // The first field must start at byte 0, and the tail extent after the last
     // field must not be negative: `total_size - off_last - size_last >= 0`.
-    if !entails(&premises, &Constraint(Linear::var("off_0"), Relation::Ge)) {
+    if !entails(&premises, &Constraint(var("off_0".into()), Relation::Ge)) {
         return Err(LayoutMismatch::ExtentExceedsStruct { index: 0 });
     }
-    let last = layout
-        .fields
-        .len()
-        .checked_sub(1)
-        .expect("off_0 proven present");
-    let tail = Linear::var("total_size")
-        .sub(&Linear::var(format!("off_{last}")))
-        .sub(&Linear::var(format!("size_{last}")));
+    let tail = var("total_size".into())
+        .checked_sub(&var(format!("off_{last}")))
+        .and_then(|e| e.checked_sub(&var(format!("size_{last}"))))
+        .ok_or_else(overflow)?;
     if !entails(&premises, &Constraint(tail, Relation::Ge)) {
         return Err(LayoutMismatch::ExtentExceedsStruct { index: last });
+    }
+
+    // Alignment, checked after the extents so overlap keeps its diagnosis.
+    // Each offset must be a multiple of its field's alignment, the struct's
+    // alignment must be the maximum field alignment, and the size must be a
+    // multiple of that alignment.
+    for (i, (&off, f)) in layout.offsets.iter().zip(&layout.fields).enumerate() {
+        if off % u64::from(f.align.bytes()) != 0 {
+            return Err(LayoutMismatch::MisalignedField {
+                index: i,
+                offset: off,
+                align: f.align.bytes(),
+            });
+        }
+    }
+    let expected = layout
+        .fields
+        .iter()
+        .map(|f| f.align.bytes())
+        .max()
+        .unwrap_or(1);
+    if layout.align.bytes() != expected {
+        return Err(LayoutMismatch::StructAlignMismatch {
+            expected,
+            found: layout.align.bytes(),
+        });
+    }
+    if layout.size % u64::from(layout.align.bytes()) != 0 {
+        return Err(LayoutMismatch::MisalignedSize {
+            size: layout.size,
+            align: layout.align.bytes(),
+        });
     }
     Ok(())
 }
@@ -518,5 +631,71 @@ mod tests {
         // a layout with a bare `off_0 >= 0` style constraint proves.
         let l = foreign(&[field("only", 4, 4)]);
         assert_eq!(prove_within_bounds(&l), Ok(()));
+    }
+
+    #[test]
+    fn empty_struct_proves_within_bounds() {
+        assert_eq!(prove_within_bounds(&foreign(&[])), Ok(()));
+        let sized = StructLayout {
+            fields: Vec::new(),
+            offsets: Vec::new(),
+            size: 4,
+            align: Alignment::BYTE,
+        };
+        assert_eq!(
+            prove_within_bounds(&sized),
+            Err(LayoutMismatch::EmptyStructSize { size: 4 })
+        );
+    }
+
+    #[test]
+    fn misaligned_offset_is_rejected() {
+        // The u32 extent fits and overlaps nothing, but starts at byte 1.
+        let l = StructLayout {
+            fields: vec![field("a", 1, 1), field("b", 4, 4)],
+            offsets: vec![0, 1],
+            size: 8,
+            align: Alignment::DWORD,
+        };
+        assert_eq!(
+            prove_within_bounds(&l),
+            Err(LayoutMismatch::MisalignedField {
+                index: 1,
+                offset: 1,
+                align: 4
+            })
+        );
+    }
+
+    #[test]
+    fn misaligned_size_is_rejected() {
+        let l = StructLayout {
+            fields: vec![field("a", 4, 4)],
+            offsets: vec![0],
+            size: 6,
+            align: Alignment::DWORD,
+        };
+        assert_eq!(
+            prove_within_bounds(&l),
+            Err(LayoutMismatch::MisalignedSize { size: 6, align: 4 })
+        );
+    }
+
+    #[test]
+    fn short_offsets_are_rejected_without_panicking() {
+        let fields = vec![field("a", 1, 1), field("b", 1, 1)];
+        let short = StructLayout {
+            fields: fields.clone(),
+            offsets: vec![0],
+            size: 2,
+            align: Alignment::BYTE,
+        };
+        let expected = LayoutMismatch::OffsetsLengthMismatch {
+            fields: 2,
+            offsets: 1,
+        };
+        assert_eq!(prove_within_bounds(&short), Err(expected.clone()));
+        // Before the length check, `prove_equivalent` indexed past the end.
+        assert_eq!(prove_equivalent(&fields, &short), Err(expected));
     }
 }

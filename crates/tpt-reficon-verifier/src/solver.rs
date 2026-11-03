@@ -19,7 +19,7 @@
 //! system over ℚ (hence also over ℤ or over any primitive Rust type's domain).
 
 use core::cmp::Ordering;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ir::{satisfies_all, Constraint, Model, Relation};
 use crate::rational::Rat;
@@ -70,15 +70,19 @@ impl Ineq {
 fn to_inequalities(cs: &[Constraint]) -> Option<Vec<Ineq>> {
     let mut out = Vec::new();
     for Constraint(lin, rel) in cs {
-        // Normalize `lin (rel) 0` into `Σ terms (rel') (-constant)`.
-        let mut coeffs: Vec<(String, Rat)> = Vec::with_capacity(lin.terms.len());
-        for (v, c) in &lin.terms {
-            let r = Rat::from_i128(*c as i128);
-            if !r.is_zero() {
-                coeffs.push((v.clone(), r));
-            }
+        // Normalize `lin (rel) 0` into `Σ terms (rel') (-constant)`. Repeated
+        // variables are summed first: two rows for `x` would otherwise be
+        // treated as two independent variables by the elimination.
+        let mut merged: BTreeMap<&str, i128> = BTreeMap::new();
+        for (v, c) in lin.terms() {
+            *merged.entry(v.as_str()).or_insert(0) += i128::from(*c);
         }
-        let rhs_const = Rat::from_i128(-(lin.constant as i128));
+        let coeffs: Vec<(String, Rat)> = merged
+            .into_iter()
+            .filter(|(_, c)| *c != 0)
+            .map(|(v, c)| (v.to_string(), Rat::from_i128(c)))
+            .collect();
+        let rhs_const = Rat::from_i128(-i128::from(lin.constant()));
         let mut push = |coeffs: &Vec<(String, Rat)>, flip: bool, strict: bool| -> Option<()> {
             // Flipping `sum aᵢxᵢ + k (≥) 0` into row form must negate the
             // coefficients *and* the right-hand side: `-sum aᵢxᵢ <= k`,
@@ -127,6 +131,11 @@ const BLOWUP_LIMIT: usize = 20_000;
 
 /// Maximum number of `!=` premises we are willing to case-split on.
 const MAX_NE_SPLITS: usize = 8;
+
+/// Total inequality-steps allowed across **all** `!=` case-split leaves of one
+/// decision. Each leaf used to get a fresh [`BLOWUP_LIMIT`], so the worst case
+/// was `2^MAX_NE_SPLITS` full eliminations; one shared budget bounds the sum.
+const STEP_BUDGET: usize = 200_000;
 
 /// Sparse coefficients of a linear expression: `(variable, coefficient)`.
 type Coeffs = Vec<(String, Rat)>;
@@ -184,11 +193,19 @@ enum CoreOutcome {
 }
 
 /// The Fourier–Motzkin elimination core over pre-normalized inequalities.
-fn fm_core(ineqs: &[Ineq]) -> Result<CoreOutcome, String> {
+///
+/// `steps` is the budget shared with the other `!=` leaves of the same
+/// decision; every round charges the current working-set size against it.
+fn fm_core(ineqs: &[Ineq], steps: &mut usize) -> Result<CoreOutcome, String> {
     let mut work: Vec<Ineq> = ineqs.to_vec();
     let mut eliminations: Vec<Elimination> = Vec::new();
 
     loop {
+        *steps = steps.saturating_add(work.len());
+        if *steps > STEP_BUDGET {
+            return Err(format!("step budget exhausted (> {STEP_BUDGET} steps)"));
+        }
+
         // Constant-row contradiction scan (`is_contradiction` returning None
         // signals overflow → conservative abort).
         for ineq in &work {
@@ -289,6 +306,15 @@ fn fm_core(ineqs: &[Ineq]) -> Result<CoreOutcome, String> {
             continue;
         }
 
+        // Check the size of the result before building it: `|uppers| × |lowers|`
+        // new rows are added on top of the untouched ones.
+        let new_rows = uppers.len().saturating_mul(lowers.len());
+        if rest.len().saturating_add(new_rows) > BLOWUP_LIMIT {
+            return Err(format!(
+                "elimination blow-up guard hit (> {BLOWUP_LIMIT} inequalities)"
+            ));
+        }
+
         // Pairwise combination of every lower × upper pair.
         //
         //   A + p·v ≤ c1  (p > 0)   ⇒   v ≤ (c1 − A)/p      (upper)
@@ -298,7 +324,7 @@ fn fm_core(ineqs: &[Ineq]) -> Result<CoreOutcome, String> {
         //   (c2 − B)/q ≤ (c1 − A)/p ; multiplying by p > 0 then by q < 0
         //   (which flips) gives  q(c1−A) − p(c2−B) ≤ 0, i.e.
         //   −q·A + p·B  ≤  p·c2 − q·c1.
-        let mut combined: Vec<Ineq> = Vec::with_capacity(uppers.len() * lowers.len());
+        let mut combined: Vec<Ineq> = Vec::with_capacity(new_rows);
         for u in &uppers {
             let p = u
                 .coeffs
@@ -515,7 +541,11 @@ fn reconstruct_witness(eliminations: &[Elimination]) -> Option<Model> {
 
 /// Decides one Ne-free conjunction of constraints, producing a verified
 /// witness when satisfiable.
-fn solve_leaf(cs: &[Constraint], original_for_check: &[Constraint]) -> Result<Verdict, String> {
+fn solve_leaf(
+    cs: &[Constraint],
+    original_for_check: &[Constraint],
+    steps: &mut usize,
+) -> Result<Verdict, String> {
     let ineqs = match to_inequalities(cs) {
         Some(i) => i,
         // Only reachable if a caller bypasses the Ne splitter.
@@ -525,7 +555,7 @@ fn solve_leaf(cs: &[Constraint], original_for_check: &[Constraint]) -> Result<Ve
             ))
         }
     };
-    match fm_core(&ineqs)? {
+    match fm_core(&ineqs, steps)? {
         CoreOutcome::Contradiction => Ok(Verdict::Unsat),
         CoreOutcome::Consistent(elims) => match reconstruct_witness(&elims) {
             Some(m) => {
@@ -549,6 +579,7 @@ fn decide_branches(
     nes: &[Constraint],
     acc: &mut Vec<Constraint>,
     original: &[Constraint],
+    steps: &mut usize,
 ) -> Result<Verdict, String> {
     if nes.len() > MAX_NE_SPLITS {
         return Ok(Verdict::Unknown(format!(
@@ -556,11 +587,11 @@ fn decide_branches(
         )));
     }
     let Some((first, rest)) = nes.split_first() else {
-        return solve_leaf(acc, original);
+        return solve_leaf(acc, original, steps);
     };
     for rel in [Relation::Gt, Relation::Lt] {
         acc.push(Constraint(first.0.clone(), rel));
-        let verdict = decide_branches(rest, acc, original)?;
+        let verdict = decide_branches(rest, acc, original, steps)?;
         acc.pop();
         match verdict {
             Verdict::Sat(_) => return Ok(verdict),
@@ -582,7 +613,8 @@ pub fn decide(cs: &[Constraint]) -> Result<Verdict, String> {
             base.push(c.clone());
         }
     }
-    decide_branches(&nes, &mut base, cs)
+    let mut steps = 0usize;
+    decide_branches(&nes, &mut base, cs, &mut steps)
 }
 
 /// Returns `true` iff the constraint set is **proven** unsatisfiable over ℚ.
@@ -648,7 +680,7 @@ mod tests {
     }
 
     fn lin(s: &str, k: i64) -> Linear {
-        Linear::var(s).add(&Linear::constant_only(k))
+        Linear::var(s).checked_add(&Linear::constant_only(k)).unwrap()
     }
 
     #[test]
@@ -736,8 +768,8 @@ mod tests {
             c(lin("x", -5), Relation::Eq),
             c(
                 Linear::var("y")
-                    .add(&Linear::var("x").checked_scale(-2).unwrap())
-                    .add(&Linear::constant_only(3)),
+                    .checked_add(&Linear::var("x").checked_scale(-2).unwrap()).unwrap()
+                    .checked_add(&Linear::constant_only(3)).unwrap(),
                 Relation::Eq,
             ),
         ];
@@ -790,8 +822,8 @@ mod tests {
         let premises = [
             c(
                 Linear::var("x")
-                    .add(&Linear::var("y"))
-                    .add(&Linear::constant_only(-1)),
+                    .checked_add(&Linear::var("y")).unwrap()
+                    .checked_add(&Linear::constant_only(-1)).unwrap(),
                 Relation::Le,
             ),
             c(Linear::var("x"), Relation::Ge),
@@ -818,8 +850,8 @@ mod tests {
         let cs = [
             c(
                 Linear::var("y")
-                    .add(&Linear::var("x").checked_scale(-2).unwrap())
-                    .add(&Linear::constant_only(-1)),
+                    .checked_add(&Linear::var("x").checked_scale(-2).unwrap()).unwrap()
+                    .checked_add(&Linear::constant_only(-1)).unwrap(),
                 Relation::Le,
             ),
             c(lin("x", -3), Relation::Le),
@@ -832,8 +864,8 @@ mod tests {
         assert!(unsat(&[
             c(
                 Linear::var("x")
-                    .add(&Linear::var("y"))
-                    .add(&Linear::constant_only(-1)),
+                    .checked_add(&Linear::var("y")).unwrap()
+                    .checked_add(&Linear::constant_only(-1)).unwrap(),
                 Relation::Le
             ),
             c(lin("x", -1), Relation::Ge),

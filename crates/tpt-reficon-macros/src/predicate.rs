@@ -66,7 +66,7 @@ pub fn lower(expr: &Expr, allowed_vars: &[String]) -> syn::Result<Branches> {
             let lhs = linear(&b.left, allowed_vars)?;
             let rhs = linear(&b.right, allowed_vars)?;
             let rel = comparison_rel(&b.op, b.op.span())?;
-            Ok(vec![vec![Constraint(lhs.sub(&rhs), rel)]])
+            Ok(vec![vec![Constraint(lhs.checked_sub(&rhs).ok_or_else(|| unsupported(expr, "coefficient overflow"))?, rel)]])
         }
         other => Err(unsupported(other, "unsupported predicate shape")),
     }
@@ -198,10 +198,16 @@ fn linear(expr: &Expr, allowed_vars: &[String]) -> syn::Result<Linear> {
         }
         Expr::Binary(b) => match b.op {
             BinOp::Add(_) => {
-                Ok(linear(&b.left, allowed_vars)?.add(&linear(&b.right, allowed_vars)?))
+                let lhs = linear(&b.left, allowed_vars)?;
+                let rhs = linear(&b.right, allowed_vars)?;
+                lhs.checked_add(&rhs)
+                    .ok_or_else(|| unsupported(expr, "coefficient overflow"))
             }
             BinOp::Sub(_) => {
-                Ok(linear(&b.left, allowed_vars)?.sub(&linear(&b.right, allowed_vars)?))
+                let lhs = linear(&b.left, allowed_vars)?;
+                let rhs = linear(&b.right, allowed_vars)?;
+                lhs.checked_sub(&rhs)
+                    .ok_or_else(|| unsupported(expr, "coefficient overflow"))
             }
             other => Err(syn::Error::new(
                 other.span(),
@@ -299,7 +305,7 @@ mod tests {
         let domain = vec![
             Constraint(Linear::var("value"), Relation::Ge),
             Constraint(
-                Linear::var("value").add(&Linear::constant_only(-255)),
+                Linear::var("value").checked_add(&Linear::constant_only(-255)).unwrap(),
                 Relation::Le,
             ),
         ];
