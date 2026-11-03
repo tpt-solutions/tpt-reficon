@@ -100,6 +100,24 @@ jobs:
         working-directory: crates/tpt-reficon/tests/go/payment
         run: go test ./...
 
+  coverage:
+    name: coverage (llvm-cov, line floor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      # The ffi-gated code needs libclang and is measured by its own job. This run
+      # covers the default features, and the floor is set just below the measured
+      # line coverage so that a regression fails the job.
+      - name: Measure line coverage
+        run: cargo llvm-cov --workspace --summary-only --fail-under-lines 80
+
   examples:
     name: examples
     runs-on: ubuntu-latest

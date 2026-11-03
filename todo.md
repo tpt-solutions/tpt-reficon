@@ -173,7 +173,7 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 ## Phase 14 — Automation
 - [ ] `release-plz`, tag-triggered publish with dry run, `cargo-semver-checks` — open. The publish and tag parts are release steps, which are outside this work. `cargo-semver-checks` needs a published baseline to compare against.
 - [x] Dependabot (cargo, github-actions, gomod); scheduled `cargo deny`/audit and `cargo update` — the scheduled run covers deny and advisories. `cargo update` is covered by Dependabot's weekly grouped updates.
-- [ ] Deploy mdBook to GitHub Pages; `cargo-llvm-cov`; `cargo-mutants` on the verifier; `justfile` — `justfile` is done. Open: the Pages deploy (a publish step), `cargo-llvm-cov` and `cargo-mutants` (new CI jobs that I could not run locally).
+- [ ] Deploy mdBook to GitHub Pages; `cargo-llvm-cov`; `cargo-mutants` on the verifier; `justfile` — done: `cargo-llvm-cov` runs on every push with a 80% line floor (measured 83%), `cargo-mutants` runs weekly in `mutants.yml` (320 mutants, too slow for a PR gate), and `justfile` has both. Open: the Pages deploy, which is a publish step, and the first mutation report, which the weekly run produces.
 
 ## Phase 15 — Innovation (after v0.1.0)
 - [ ] Tri-state solver result `Valid | Invalid(model) | Unknown(reason)`, unsat cores, counterexamples in compile errors — open. The verifier already returns `Sat`, `Unsat` or `Unknown`, which is most of the tri-state. Unsat cores are a new solver feature.

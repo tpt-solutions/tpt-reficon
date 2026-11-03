@@ -1,0 +1,32 @@
+name: Mutation testing
+
+# Mutation testing runs about 320 mutants of the solver, one test run each, so it
+# is too slow for every push. It runs weekly, and on demand.
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  mutants:
+    name: cargo-mutants on the verifier
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants
+      # Survivors are reported, not failed on: a surviving mutant is a test gap
+      # to triage, and cargo-mutants exits non-zero for any survivor.
+      - name: Run mutants on the verifier
+        run: cargo mutants -p tpt-reficon-verifier --timeout 180 --no-shuffle || true
+      - name: Keep the report
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-report
+          path: mutants.out

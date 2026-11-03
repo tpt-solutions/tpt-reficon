@@ -40,3 +40,11 @@ deny:
 # Runs the solver fuzz target for 60 seconds. Linux only (libFuzzer on MSVC does not link).
 fuzz:
     cd fuzz && cargo fuzz run solver_decide -- -max_total_time=60
+
+# Line coverage with the same floor as the CI coverage job.
+coverage:
+    cargo llvm-cov --workspace --summary-only --fail-under-lines 80
+
+# Mutation testing for the verifier. Slow: about 320 mutants.
+mutants:
+    cargo mutants -p tpt-reficon-verifier --timeout 180
