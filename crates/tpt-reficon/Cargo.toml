@@ -29,6 +29,8 @@ ffi = ["tpt-reficon-macros/ffi-bindgen"]
 serde = { version = "1", default-features = false, features = ["std"] }
 # Used by the proptest integration test, which draws values from the derived Arbitrary.
 proptest = "1"
+# Compile-fail checks for `refined!`.
+trybuild = "1"
 
 [package.metadata.docs.rs]
 # Not all-features: `ffi` needs libclang at build time, which docs.rs lacks.

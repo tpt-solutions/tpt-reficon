@@ -79,13 +79,80 @@ fn comparison_branch(
     rel: Relation,
     allowed_vars: &[String],
 ) -> syn::Result<Branches> {
-    let lhs = linear(left, allowed_vars)?;
-    let rhs = linear(right, allowed_vars)?;
-    Ok(vec![vec![Constraint(
+    let mut side = Side::new();
+    let lhs = linear(left, allowed_vars, &mut side)?;
+    let rhs = linear(right, allowed_vars, &mut side)?;
+    let mut branch = vec![Constraint(
         lhs.checked_sub(&rhs)
             .ok_or_else(|| unsupported(expr, "coefficient overflow"))?,
         rel,
-    )]])
+    )];
+    // The side facts are true of every value, so they join this branch.
+    branch.extend(side);
+    Ok(vec![branch])
+}
+
+/// Facts that hold for every value a predicate mentions, such as the defining
+/// equations of a remainder. Each branch that uses one carries them.
+type Side = Vec<Constraint>;
+
+/// Source of fresh variable names for remainders. Names only need to be unique
+/// within one solver query, and a process-wide counter guarantees that.
+static FRESH: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+fn fresh_name(prefix: &str) -> String {
+    let n = FRESH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    format!("__tpt_{prefix}{n}")
+}
+
+/// Lowers `dividend % k` for a positive literal `k` over an unsigned dividend.
+///
+/// With `q` and `r` fresh, `dividend = k·q + r` and `0 <= r <= k - 1` hold for
+/// every value. The quotient `q` is only constrained over the rationals, so
+/// these facts can admit fewer solutions than the integers, but never a
+/// solution the integers lack. An UNSAT verdict and an entailment proof therefore
+/// stay sound. They can be missed, which is the conservative direction.
+fn remainder(expr: &Expr, dividend: &Linear, divisor: i64, side: &mut Side) -> syn::Result<Linear> {
+    let overflow = || unsupported(expr, "coefficient overflow");
+    let quot = fresh_name("quot");
+    let rem = fresh_name("rem");
+    // dividend - (k·quot + rem) = 0
+    let defn =
+        Linear::from_parts(vec![(quot, divisor), (rem.clone(), 1)], 0).ok_or_else(overflow)?;
+    side.push(Constraint(
+        dividend.checked_sub(&defn).ok_or_else(overflow)?,
+        Relation::Eq,
+    ));
+    // 0 <= rem  and  rem - (k - 1) <= 0
+    side.push(Constraint(Linear::var(rem.clone()), Relation::Ge));
+    let upper = Linear::from_parts(vec![(rem.clone(), 1)], -(divisor - 1)).ok_or_else(overflow)?;
+    side.push(Constraint(upper, Relation::Le));
+    Ok(Linear::var(rem))
+}
+
+/// The positive integer literal that a `%` divides by, if it is one.
+fn remainder_divisor(expr: &Expr) -> Option<i64> {
+    let Expr::Lit(l) = expr else {
+        return None;
+    };
+    let Lit::Int(i) = &l.lit else {
+        return None;
+    };
+    i.base10_parse::<i64>().ok().filter(|k| *k >= 1)
+}
+
+/// True when a predicate contains a `%`. Such a predicate is only sound over an
+/// unsigned domain, which the derive and `#[contract]` check before lowering.
+pub fn uses_remainder(expr: &Expr) -> bool {
+    match expr {
+        Expr::Paren(p) => uses_remainder(&p.expr),
+        Expr::Group(p) => uses_remainder(&p.expr),
+        Expr::Unary(u) => uses_remainder(&u.expr),
+        Expr::Binary(b) => {
+            matches!(b.op, BinOp::Rem(_)) || uses_remainder(&b.left) || uses_remainder(&b.right)
+        }
+        _ => false,
+    }
 }
 
 /// Lowers `!expr` by pushing the negation inward. Comparisons flip, and
@@ -221,10 +288,10 @@ fn comparison_rel(op: &BinOp, span: Span) -> syn::Result<Relation> {
 
 /// Builds an integer-linear expression. Identifiers must be in
 /// `allowed_vars`; comparisons inside expressions are rejected by construction.
-fn linear(expr: &Expr, allowed_vars: &[String]) -> syn::Result<Linear> {
+fn linear(expr: &Expr, allowed_vars: &[String], side: &mut Side) -> syn::Result<Linear> {
     match expr {
-        Expr::Paren(p) => linear(&p.expr, allowed_vars),
-        Expr::Group(p) => linear(&p.expr, allowed_vars),
+        Expr::Paren(p) => linear(&p.expr, allowed_vars, side),
+        Expr::Group(p) => linear(&p.expr, allowed_vars, side),
         Expr::Lit(l) => match &l.lit {
             Lit::Int(i) => {
                 let v: i64 = i.base10_parse().map_err(|_| {
@@ -241,7 +308,7 @@ fn linear(expr: &Expr, allowed_vars: &[String]) -> syn::Result<Linear> {
             _ => Err(unsupported(expr, "expected an integer or bool literal")),
         },
         Expr::Unary(u) => match u.op {
-            UnOp::Neg(_) => linear(&u.expr, allowed_vars)?
+            UnOp::Neg(_) => linear(&u.expr, allowed_vars, side)?
                 .checked_scale(-1)
                 .ok_or_else(|| {
                     syn::Error::new(
@@ -272,21 +339,21 @@ fn linear(expr: &Expr, allowed_vars: &[String]) -> syn::Result<Linear> {
         }
         Expr::Binary(b) => match b.op {
             BinOp::Add(_) => {
-                let lhs = linear(&b.left, allowed_vars)?;
-                let rhs = linear(&b.right, allowed_vars)?;
+                let lhs = linear(&b.left, allowed_vars, side)?;
+                let rhs = linear(&b.right, allowed_vars, side)?;
                 lhs.checked_add(&rhs)
                     .ok_or_else(|| unsupported(expr, "coefficient overflow"))
             }
             BinOp::Sub(_) => {
-                let lhs = linear(&b.left, allowed_vars)?;
-                let rhs = linear(&b.right, allowed_vars)?;
+                let lhs = linear(&b.left, allowed_vars, side)?;
+                let rhs = linear(&b.right, allowed_vars, side)?;
                 lhs.checked_sub(&rhs)
                     .ok_or_else(|| unsupported(expr, "coefficient overflow"))
             }
             // Multiplication stays linear only when one side is a constant.
             BinOp::Mul(_) => {
-                let lhs = linear(&b.left, allowed_vars)?;
-                let rhs = linear(&b.right, allowed_vars)?;
+                let lhs = linear(&b.left, allowed_vars, side)?;
+                let rhs = linear(&b.right, allowed_vars, side)?;
                 let (scalar, other) = if lhs.is_constant() {
                     (lhs.constant(), rhs)
                 } else if rhs.is_constant() {
@@ -298,9 +365,18 @@ fn linear(expr: &Expr, allowed_vars: &[String]) -> syn::Result<Linear> {
                     .checked_scale(scalar)
                     .ok_or_else(|| unsupported(expr, "coefficient overflow"))
             }
+            // `%` by a positive literal, over an unsigned dividend (checked by the
+            // caller, see `uses_remainder`).
+            BinOp::Rem(_) => {
+                let divisor = remainder_divisor(&b.right).ok_or_else(|| {
+                    unsupported(expr, "`%` needs a positive integer literal divisor")
+                })?;
+                let dividend = linear(&b.left, allowed_vars, side)?;
+                remainder(expr, &dividend, divisor, side)
+            }
             other => Err(syn::Error::new(
                 other.span(),
-                "unsupported binary operator in refinement predicate (expected +, -, or * by a constant)",
+                "unsupported binary operator in refinement predicate (expected +, -, *, or % with a constant)",
             )),
         },
         other => Err(unsupported(
@@ -494,5 +570,39 @@ mod tests {
     fn multiplication_of_two_variables_is_rejected() {
         let err = lower_str("x * x < 10").unwrap_err().to_string();
         assert!(err.contains("not linear"), "{err}");
+    }
+}
+
+#[cfg(test)]
+mod remainder_tests {
+    use super::*;
+
+    fn lower_str(src: &str) -> syn::Result<Branches> {
+        let expr: Expr = syn::parse_str(src).unwrap();
+        lower(&expr, &["x".to_string()])
+    }
+
+    #[test]
+    fn remainder_by_a_literal_lowers_with_its_defining_facts() {
+        // x % 4 == 1 lowers to the comparison plus the three remainder facts.
+        let branches = lower_str("x % 4 == 1").unwrap();
+        assert_eq!(branches.len(), 1);
+        assert_eq!(branches[0].len(), 4);
+    }
+
+    #[test]
+    fn remainder_needs_a_positive_literal_divisor() {
+        let err = lower_str("x % y == 0").unwrap_err().to_string();
+        assert!(err.contains("positive integer literal"), "{err}");
+        let err = lower_str("x % 0 == 0").unwrap_err().to_string();
+        assert!(err.contains("positive integer literal"), "{err}");
+    }
+
+    #[test]
+    fn uses_remainder_sees_nested_uses() {
+        let yes: Expr = syn::parse_str("x > 0 && (x % 3 == 0)").unwrap();
+        let no: Expr = syn::parse_str("x > 0 && x < 9").unwrap();
+        assert!(uses_remainder(&yes));
+        assert!(!uses_remainder(&no));
     }
 }

@@ -43,6 +43,13 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
     })?;
     let allowed = ::core::slice::from_ref(&config.variable);
 
+    if config.predicates.iter().any(predicate::uses_remainder) && !domain::is_unsigned(inner_ty) {
+        return Err(syn::Error::new(
+            inner_ty.span(),
+            "`%` in a refinement needs an unsigned inner type, because a signed remainder takes the sign of the dividend",
+        ));
+    }
+
     // 1. Lowers every predicate to DNF over the verifier's constraint IR.
     //    Multiple attributes are conjoined; `||` within one predicate
     //    distributes into alternatives.
@@ -276,6 +283,27 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
         TokenStream::new()
     };
 
+    // The body of `__tpt_check`, mirroring the runtime check. Integers widen to
+    // `i128` as in `new`. A `u128` above `i128::MAX` is rejected first, because the
+    // `as` cast below would wrap it.
+    let check_body = if widen_to_i128 {
+        let u128_guard = if quote!(#inner_ty).to_string() == "u128" {
+            quote! { if (value as u128) > (i128::MAX as u128) { return false; } }
+        } else {
+            TokenStream::new()
+        };
+        quote! {
+            #u128_guard
+            let #variable: i128 = value as i128;
+            #runtime_check
+        }
+    } else {
+        quote! {
+            let #variable: #inner_ty = value;
+            #runtime_check
+        }
+    };
+
     Ok(quote! {
         #serde_impl
         #proptest_impl
@@ -345,6 +373,14 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
             #[doc = "Returns the raw inner value."]
             pub fn get(&self) -> #inner_ty {
                 #field_access
+            }
+
+            // The predicate as a `const fn`, so `refined!` can check a literal at
+            // compile time. The body mirrors the runtime check, including the
+            // widening to `i128` for integers.
+            #[doc(hidden)]
+            pub const fn __tpt_check(value: #inner_ty) -> bool {
+                #check_body
             }
         }
     })
@@ -431,9 +467,12 @@ mod tests {
 
     #[test]
     fn u128_runtime_check_does_not_wrap() {
+        // The runtime check uses TryInto. The one `as i128` is in the const check,
+        // and it sits behind the guard that rejects values above i128::MAX first.
         let out = expand_str("#[requires(value < 1000)] struct B(u128);");
-        assert!(!out.contains("as i128"), "{out}");
         assert!(out.contains("TryInto"), "{out}");
+        assert_eq!(out.matches("as i128").count(), 1, "{out}");
+        assert!(out.contains("i128 :: MAX as u128"), "{out}");
     }
 
     #[test]
@@ -527,5 +566,26 @@ mod proptest_tests {
         let out = expand_refine(&opted).unwrap().to_string();
         assert!(out.contains("Arbitrary"), "{out}");
         assert!(out.contains("prop_filter_map"), "{out}");
+    }
+}
+
+#[cfg(test)]
+mod remainder_tests {
+    use super::*;
+
+    #[test]
+    fn remainder_over_a_signed_type_is_rejected() {
+        let input: DeriveInput =
+            syn::parse_str("#[requires(value % 2 == 0)] struct B(i32);").unwrap();
+        let msg = expand_refine(&input).unwrap_err().to_string();
+        assert!(msg.contains("unsigned inner type"), "{msg}");
+    }
+
+    #[test]
+    fn remainder_over_an_unsigned_type_expands() {
+        let input: DeriveInput =
+            syn::parse_str("#[requires(value % 2 == 0)] struct B(u32);").unwrap();
+        let out = expand_refine(&input).unwrap().to_string();
+        assert!(out.contains("__tpt_check"), "{out}");
     }
 }

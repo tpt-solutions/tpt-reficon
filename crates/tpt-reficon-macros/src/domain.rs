@@ -79,6 +79,16 @@ pub fn domain_constraints(ty: &Type, var: &str) -> Vec<Constraint> {
     }
 }
 
+/// True when `ty` is an unsigned primitive integer. `%` is sound only for these: a
+/// signed remainder takes the sign of the dividend, which the remainder encoding
+/// does not model.
+pub fn is_unsigned(ty: &Type) -> bool {
+    matches!(
+        primitive_name(ty),
+        Some("u8" | "u16" | "u32" | "u64" | "u128" | "usize")
+    )
+}
+
 /// True when `ty` is one of Rust's primitive integer types.
 ///
 /// Only these may have their runtime predicate widened to `i128` (see

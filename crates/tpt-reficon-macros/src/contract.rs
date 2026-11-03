@@ -201,6 +201,18 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
     // at exit only if the body leaves it alone. See the `post_elided` note.
     let has_mut_int = int_params.iter().any(|p| p.mutable);
 
+    // `%` is sound only over unsigned integers. See `domain::is_unsigned`.
+    let remainder_used = pre_exprs
+        .iter()
+        .chain(post_exprs.iter())
+        .any(predicate::uses_remainder);
+    if remainder_used && int_params.iter().any(|p| !domain::is_unsigned(&p.ty)) {
+        return Err(syn::Error::new(
+            f.sig.ident.span(),
+            "`%` in a contract needs every integer parameter to be unsigned",
+        ));
+    }
+
     // `old(x)` reads the entry value of `x`. Each named parameter gets a
     // snapshot, taken before the body runs. Messages keep the source text.
     let post_src = post_exprs.clone();
@@ -687,5 +699,22 @@ mod old_tests {
         // `old` names an entry value, which a precondition cannot refer to.
         let item: TokenStream = "#[requires(old(x) > 0)] fn f(x: i64) {}".parse().unwrap();
         assert!(expand(TokenStream::new(), item).is_err());
+    }
+}
+
+#[cfg(test)]
+mod remainder_contract_tests {
+    use super::*;
+
+    #[test]
+    fn remainder_in_a_contract_needs_unsigned_parameters() {
+        let item: TokenStream = "#[requires(x % 2 == 0)] fn f(x: i64) {}".parse().unwrap();
+        let msg = expand(TokenStream::new(), item).unwrap_err().to_string();
+        assert!(
+            msg.contains("every integer parameter to be unsigned"),
+            "{msg}"
+        );
+        let item: TokenStream = "#[requires(x % 2 == 0)] fn f(x: u64) {}".parse().unwrap();
+        assert!(expand(TokenStream::new(), item).is_ok());
     }
 }

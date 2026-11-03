@@ -47,3 +47,32 @@ pub mod prelude {
 }
 
 pub use prelude::*;
+
+/// Builds a refined value from a literal, checking the refinement at compile
+/// time.
+///
+/// `refined!(Port, 8080)` expands to a `const` assertion on the literal, so a
+/// literal that breaks the refinement fails to compile. The value is then built
+/// with the type's `new`. The argument must be a constant expression. A variable
+/// is rejected at compile time, and `try_new` is the way to check one.
+///
+/// ```
+/// use tpt_reficon::prelude::*;
+///
+/// #[derive(Refine, Debug)]
+/// #[requires(value >= 1)]
+/// pub struct Port(u16);
+///
+/// let port = tpt_reficon::refined!(Port, 8080);
+/// assert_eq!(*port, 8080);
+/// ```
+#[macro_export]
+macro_rules! refined {
+    ($ty:ty, $value:expr) => {{
+        const _: () = ::core::assert!(
+            <$ty>::__tpt_check($value),
+            "refinement violated by the literal"
+        );
+        <$ty>::new($value)
+    }};
+}
