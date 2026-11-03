@@ -19,6 +19,19 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
         ));
     }
 
+    // Aliases and qualified paths are not resolved, so their domain and their
+    // integer widening are unknown. Reject them rather than guess.
+    if domain::primitive_name(inner_ty).is_none() {
+        return Err(syn::Error::new(
+            inner_ty.span(),
+            format!(
+                "derive(Refine) needs a primitive inner type (`u8`, `i64`, `bool`, `f64`, ...); \
+                 `{}` is not one, and type aliases and paths are not resolved",
+                quote!(#inner_ty)
+            ),
+        ));
+    }
+
     let config = attrs::parse_config(&input.attrs, field_def_ident)?;
     let variable = Ident::new(&config.variable, Span::call_site());
     let allowed = ::core::slice::from_ref(&config.variable);
@@ -135,17 +148,25 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
             },
         )
     } else if widen_to_i128 {
+        // A value outside `i128` (only possible for `u128`) cannot be evaluated
+        // in `i128`. A plain `as` cast would wrap it negative and could accept
+        // a value that violates the predicate, so the labeled block below
+        // rejects it instead. That refuses some valid `u128` values, a
+        // conservative loss that never admits an invalid one.
         (
             quote! {
                 #[allow(dead_code)]
                 #[doc = "Constructs a refined value, panicking if it violates the refinement. \
                          The check is elided only where the verifier proved it redundant."]
                 pub fn new(value: #inner_ty) -> Self {
-                    if {
+                    if 'check: {
                         // The inner binding shadows the parameter inside the
                         // condition only; `value` remains the original inner
                         // value for the constructor.
-                        let #variable: i128 = value as i128;
+                        let #variable: i128 = match ::core::convert::TryInto::<i128>::try_into(value) {
+                            ::core::result::Result::Ok(v) => v,
+                            ::core::result::Result::Err(_) => break 'check false,
+                        };
                         #runtime_check
                     } {
                         #field_constructor
@@ -158,8 +179,11 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
                 #[allow(dead_code)]
                 #[doc = "Constructs a refined value, returning an error on violation."]
                 pub fn try_new(value: #inner_ty) -> ::core::result::Result<Self, #core::RefinementError> {
-                    if {
-                        let #variable: i128 = value as i128;
+                    if 'check: {
+                        let #variable: i128 = match ::core::convert::TryInto::<i128>::try_into(value) {
+                            ::core::result::Result::Ok(v) => v,
+                            ::core::result::Result::Err(_) => break 'check false,
+                        };
                         #runtime_check
                     } {
                         ::core::result::Result::Ok(#field_constructor)
@@ -203,10 +227,6 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
         #[automatically_derived]
         impl #core::Refine for #name {
             type Inner = #inner_ty;
-
-            fn from_inner_unchecked(value: #inner_ty) -> Self {
-                #field_constructor
-            }
 
             fn into_inner(self) -> #inner_ty {
                 #field_access
@@ -262,9 +282,24 @@ fn check_newtype_struct(
              `struct Bounded(u8)` or a named-field struct like `struct S { v: u8 }`",
         )
     };
+    // A public inner field lets any caller write an unchecked value straight
+    // into the struct, which bypasses every predicate. Only `Self`'s own
+    // constructors may build one.
+    let private = |field: &syn::Field| -> syn::Result<()> {
+        if matches!(field.vis, syn::Visibility::Inherited) {
+            Ok(())
+        } else {
+            Err(syn::Error::new(
+                field.vis.span(),
+                "derive(Refine) requires a private inner field: a `pub` field lets callers \
+                 build the value without checking the refinement",
+            ))
+        }
+    };
     match fields {
         Fields::Unnamed(f) if f.unnamed.len() == 1 => {
             let field = f.unnamed.first().unwrap();
+            private(field)?;
             Ok((
                 input.span(),
                 quote!(self.0),
@@ -275,6 +310,7 @@ fn check_newtype_struct(
         }
         Fields::Named(f) if f.named.len() == 1 => {
             let field = f.named.first().unwrap();
+            private(field)?;
             let ident = field.ident.as_ref().expect("named field has ident");
             let access = quote!(self.#ident);
             let ctor = quote!(Self { #ident: value });

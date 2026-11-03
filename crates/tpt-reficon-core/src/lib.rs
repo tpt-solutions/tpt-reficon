@@ -21,14 +21,12 @@ pub trait Refine: Sized {
     /// The underlying raw type carried by the refined wrapper.
     type Inner;
 
-    /// Builds the wrapper from a raw value *without* checking the predicate.
-    ///
-    /// Only generated code may call this, and only on a path where the
-    /// predicate has already been proven (statically, or by an earlier
-    /// runtime check).
-    fn from_inner_unchecked(value: Self::Inner) -> Self;
-
     /// Consumes the wrapper, returning the raw inner value.
+    ///
+    /// There is deliberately no public constructor here that skips the check.
+    /// Every value enters through the derive's `new` / `try_new`, which
+    /// enforce the predicate, so a value that violates it cannot be built
+    /// from safe code.
     fn into_inner(self) -> Self::Inner;
 }
 
@@ -101,18 +99,14 @@ mod tests {
     struct Bounded(u8);
     impl Refine for Bounded {
         type Inner = u8;
-        fn from_inner_unchecked(value: u8) -> Self {
-            Bounded(value)
-        }
         fn into_inner(self) -> u8 {
             self.0
         }
     }
 
     #[test]
-    fn unchecked_construction_is_opaque() {
-        let b = Bounded::from_inner_unchecked(42);
-        assert_eq!(b.into_inner(), 42);
+    fn into_inner_returns_the_wrapped_value() {
+        assert_eq!(Bounded(42).into_inner(), 42);
     }
 
     #[test]

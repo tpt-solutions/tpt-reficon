@@ -15,27 +15,61 @@ use syn::Type;
 
 use tpt_reficon_verifier::ir::{Constraint, Linear, Relation};
 
+/// The primitive scalar types the derive understands, by their bare name.
+const PRIMITIVES: &[&str] = &[
+    "bool", "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128",
+    "isize", "f32", "f64",
+];
+
+/// The primitive named by `ty`, if `ty` is written as a bare primitive name.
+///
+/// Only a single-segment path counts. A qualified path such as `m::u8` or
+/// `std::primitive::u8` is not resolved, and neither is a type alias: an alias
+/// named `Byte` may stand for anything, so it gets no domain and no integer
+/// widening. Callers reject non-primitive inner types outright.
+///
+/// Known limit: a module-level `type u8 = ...;` shadows the primitive and this
+/// cannot see it, because a proc macro has no name resolution.
+pub fn primitive_name(ty: &Type) -> Option<&'static str> {
+    let Type::Path(p) = ty else {
+        return None;
+    };
+    if p.qself.is_some() || p.path.leading_colon.is_some() || p.path.segments.len() != 1 {
+        return None;
+    }
+    let seg = &p.path.segments[0];
+    if !seg.arguments.is_empty() {
+        return None;
+    }
+    let ident = seg.ident.to_string();
+    PRIMITIVES.iter().copied().find(|prim| *prim == ident)
+}
+
+/// The expression `var + bound` with the bound negated: the row `var (rel) bound`.
+fn bound_expr(var: &str, bound: i64) -> Linear {
+    Linear::from_parts(vec![(var.to_string(), 1)], -bound).expect("domain bound fits in i64")
+}
+
 /// Computes the domain constraints for `ty` over the variable `var`.
 ///
 /// Unknown types yield an empty domain (no elision, always a runtime check).
 pub fn domain_constraints(ty: &Type, var: &str) -> Vec<Constraint> {
-    let name = match last_segment_ident(ty) {
-        Some(n) => n,
-        None => return Vec::new(),
+    let Some(name) = primitive_name(ty) else {
+        return Vec::new();
     };
     let le = |bound: i64| {
         Constraint(
-            Linear::var(var).add(&Linear::constant_only(-bound)),
+            bound_expr(var, bound),
             Relation::Le,
         )
     };
     let ge = |bound: i64| {
         Constraint(
-            Linear::var(var).add(&Linear::constant_only(-bound)),
+            bound_expr(var, bound),
             Relation::Ge,
         )
     };
-    match name.as_str() {
+    match name {
         "bool" => vec![ge(0), le(1)],
         "u8" => vec![ge(0), le(i64::from(u8::MAX))],
         "u16" => vec![ge(0), le(i64::from(u16::MAX))],
@@ -55,14 +89,6 @@ pub fn domain_constraints(ty: &Type, var: &str) -> Vec<Constraint> {
     }
 }
 
-fn last_segment_ident(ty: &Type) -> Option<String> {
-    let path = match ty {
-        Type::Path(p) if p.qself.is_none() => &p.path,
-        _ => return None,
-    };
-    path.segments.last().map(|s| s.ident.to_string())
-}
-
 /// True when `ty` is one of Rust's primitive integer types.
 ///
 /// Only these may have their runtime predicate widened to `i128` (see
@@ -70,7 +96,7 @@ fn last_segment_ident(ty: &Type) -> Option<String> {
 /// predicate's arithmetic, so those keep evaluating in the inner type.
 pub fn is_supported_integer(ty: &Type) -> bool {
     matches!(
-        last_segment_ident(ty).as_deref(),
+        primitive_name(ty),
         Some(
             "u8" | "u16"
                 | "u32"
