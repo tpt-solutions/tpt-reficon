@@ -42,3 +42,18 @@ For each predicate the derive runs the solver and picks one of three outcomes:
 3. **Neither** — the derive emits an exact runtime check in `new` and `try_new`.
 
 See [How checks are decided](checks.md) for the rules behind each outcome.
+
+## Deserializing untrusted input
+
+`#[refine(serde)]` adds a `serde::Deserialize` impl. It deserializes the inner
+type and then runs `try_new`, so input that breaks the refinement becomes a
+deserialization error and never a value. The impl needs serde in your crate:
+
+```text
+#[derive(Refine)]
+#[refine(serde)]
+#[requires(value >= 1)]
+pub struct Port(u16);
+```
+
+Do not also derive `Deserialize` on the type: the attribute writes that impl.

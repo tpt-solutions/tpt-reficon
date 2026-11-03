@@ -40,8 +40,9 @@ fn scaled(amount: i64, limit: i64, divisor: i64) -> i64 {
 
 ## Limits
 
-- Methods and `self` are not supported, nor are type-generic, `async`, `const`,
-  `unsafe`, or `extern` functions. Lifetime parameters are allowed.
+- Methods with `self` or `&self` are supported: the receiver is not checked, but
+  the body can use it. Type-generic, `async`, `const`, `unsafe`, and `extern`
+  functions are not supported. Lifetime parameters are allowed.
 - Predicates mention integer parameters only. `#[ensures]` needs an integer
   return type.
 - A parameter named `result` conflicts with `#[ensures]`.
