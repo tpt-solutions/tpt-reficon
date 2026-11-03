@@ -6,9 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Refinement types, FFI contracts, and fractional borrows for Rust, verified by an in-house QF_LRA solver."
-keywords.workspace = true
-categories.workspace = true
-readme = "../../README.md"
+keywords = ["refinement-types", "ffi", "contracts", "formal-verification", "lra-solver"]
+categories = ["development-tools", "development-tools::ffi"]
+readme = "README.md"
 documentation = "https://docs.rs/tpt-reficon"
 
 [lints]

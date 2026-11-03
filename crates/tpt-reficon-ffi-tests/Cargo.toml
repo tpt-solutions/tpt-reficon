@@ -4,6 +4,9 @@ version = "0.0.0"
 edition = "2021"
 description = "Integration tests for tpt-reficon's ffi_wrappers! macro. Not published."
 publish = false
+keywords = ["ffi", "testing", "contracts"]
+categories = ["development-tools::testing", "development-tools::ffi"]
+readme = "README.md"
 
 # Deliberately without `[lints] workspace = true`: the wrappers call C, which
 # needs `unsafe`, and the workspace forbids `unsafe_code`.

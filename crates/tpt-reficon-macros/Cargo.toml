@@ -7,8 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Proc-macro frontend for tpt-reficon: refinement types, function contracts, FFI contracts."
 documentation = "https://docs.rs/tpt-reficon-macros"
-keywords.workspace = true
-categories.workspace = true
+keywords = ["proc-macro", "refinement-types", "contracts", "ffi", "derive"]
+categories = ["development-tools", "development-tools::procedural-macro-helpers"]
+readme = "README.md"
 
 [lints]
 workspace = true

@@ -3,6 +3,10 @@ name = "tpt-reficon-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
+description = "cargo-fuzz targets for tpt-reficon-verifier. Not published."
+keywords = ["fuzzing", "solver", "smt"]
+categories = ["development-tools::testing"]
+readme = "README.md"
 
 [package.metadata]
 cargo-fuzz = true
