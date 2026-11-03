@@ -428,12 +428,11 @@ fn collect_params(f: &ItemFn) -> syn::Result<Vec<Param>> {
     f.sig
         .inputs
         .iter()
-        .map(|arg| match arg {
-            FnArg::Receiver(r) => Err(syn::Error::new(
-                r.span(),
-                "`#[contract]` does not support methods or `self`",
-            )),
-            FnArg::Typed(pt) => match pt.pat.as_ref() {
+        // The receiver is not an integer, so no check reads it. Its methods still
+        // see it through the closure that wraps the body.
+        .filter_map(|arg| match arg {
+            FnArg::Receiver(_) => None,
+            FnArg::Typed(pt) => Some(match pt.pat.as_ref() {
                 Pat::Ident(pi) => {
                     let ty = (*pt.ty).clone();
                     Ok(Param {
@@ -448,7 +447,7 @@ fn collect_params(f: &ItemFn) -> syn::Result<Vec<Param>> {
                     other.span(),
                     "`#[contract]` parameters must be plain identifiers",
                 )),
-            },
+            }),
         })
         .collect()
 }
@@ -552,9 +551,9 @@ mod tests {
     }
 
     #[test]
-    fn methods_are_rejected() {
-        let msg = expand_err("#[requires(x > 0)] fn f(&self, x: i64) {}");
-        assert!(msg.contains("methods"), "{msg}");
+    fn methods_with_a_receiver_are_accepted() {
+        let out = expand_str("#[requires(x > 0)] fn f(&self, x: i64) -> i64 { x }");
+        assert!(out.contains("precondition"), "{out}");
     }
 
     #[test]

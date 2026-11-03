@@ -122,3 +122,32 @@ fn add_three_breaks_the_contract(mut x: i64) -> i64 {
 fn old_detects_a_body_that_breaks_the_relation() {
     add_three_breaks_the_contract(1);
 }
+
+/// Contracts on methods: the receiver is not checked, but the body can use it.
+struct Ledger {
+    balance: i64,
+}
+
+impl Ledger {
+    #[contract]
+    #[requires(amount > 0)]
+    #[ensures(result == amount)]
+    fn withdraw(&mut self, amount: i64) -> i64 {
+        self.balance -= amount;
+        amount
+    }
+}
+
+#[test]
+fn method_contracts_check_arguments_and_the_receiver_state() {
+    let mut ledger = Ledger { balance: 10 };
+    assert_eq!(ledger.withdraw(4), 4);
+    assert_eq!(ledger.balance, 6);
+}
+
+#[test]
+#[should_panic(expected = "precondition")]
+fn method_precondition_is_checked() {
+    let mut ledger = Ledger { balance: 10 };
+    ledger.withdraw(0);
+}
