@@ -14,7 +14,7 @@ use syn::visit_mut::{self, VisitMut};
 use syn::{Block, Expr, FnArg, Ident, ItemFn, Pat, ReturnType, Type};
 
 use tpt_reficon_verifier::ir::{Constraint, Linear};
-use tpt_reficon_verifier::solver::unsat;
+use tpt_reficon_verifier::solver::unsat_integer;
 
 use crate::{domain, integer, predicate};
 
@@ -143,7 +143,7 @@ fn widen_stmt(id: &Ident) -> TokenStream {
 /// True when the constraints admit no value: unsatisfiable over ℚ, or, for one
 /// integer variable, no integer in the domain either.
 fn infeasible(cs: &[Constraint], int_var: Option<&str>) -> bool {
-    unsat(cs)
+    unsat_integer(cs)
         || int_var.is_some_and(|v| {
             matches!(
                 integer::analyze(cs, v),
@@ -716,5 +716,21 @@ mod remainder_contract_tests {
         );
         let item: TokenStream = "#[requires(x % 2 == 0)] fn f(x: u64) {}".parse().unwrap();
         assert!(expand(TokenStream::new(), item).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod integer_gap_tests {
+    use super::*;
+
+    #[test]
+    fn two_parameter_integer_gap_is_rejected() {
+        // a + a + b + b == 3 has rational solutions and no integer ones, because
+        // the left side is always even. Integer tightening finds that.
+        let item: TokenStream = "#[requires(a + a + b + b == 3)] fn f(a: i64, b: i64) {}"
+            .parse()
+            .unwrap();
+        let msg = expand(TokenStream::new(), item).unwrap_err().to_string();
+        assert!(msg.contains("unsatisfiable contract"), "{msg}");
     }
 }

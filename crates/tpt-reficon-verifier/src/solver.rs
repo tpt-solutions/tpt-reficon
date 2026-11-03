@@ -21,7 +21,7 @@
 use core::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::ir::{satisfies_all, Constraint, Model, Relation};
+use crate::ir::{satisfies_all, Constraint, Linear, Model, Relation};
 use crate::rational::Rat;
 
 /// Outcome of a full decision attempt.
@@ -670,6 +670,131 @@ pub fn counterexample(premises: &[Constraint], conclusion: &Constraint) -> Optio
     })
 }
 
+/// Rewrites constraints over the integers into an equivalent set with tighter
+/// rational relaxations, so the rational solver sees the integer gaps.
+///
+/// For integer variables: a strict bound becomes a non-strict one with the
+/// constant adjusted, `lin > 0` becomes `lin >= 1`, and `lin < 0` becomes
+/// `lin <= -1`. A row whose coefficients share a gcd `g` is divided by `g`, and
+/// its bound is rounded to an integer. An equality whose constant is not a
+/// multiple of `g` has no integer solution, which is reported as `None`.
+///
+/// A constraint that overflows during rewriting is kept as it was. That is
+/// always sound, because the original constraint is a relaxation of the
+/// integer one.
+pub fn tighten(cs: &[Constraint]) -> Option<Vec<Constraint>> {
+    let mut out = Vec::with_capacity(cs.len());
+    for c in cs {
+        match tighten_one(c) {
+            Tightened::Constraint(t) => out.push(t),
+            Tightened::Unsatisfiable => return None,
+            Tightened::Unchanged => out.push(c.clone()),
+        }
+    }
+    Some(out)
+}
+
+enum Tightened {
+    Constraint(Constraint),
+    Unsatisfiable,
+    Unchanged,
+}
+
+fn tighten_one(c: &Constraint) -> Tightened {
+    let Constraint(lin, rel) = c;
+    if lin.is_constant() {
+        // Decided exactly by the rational solver already.
+        return Tightened::Unchanged;
+    }
+    // Over the integers a strict bound is a non-strict one: `lin < 0` is
+    // `lin + 1 <= 0`, and `lin > 0` is `lin - 1 >= 0`.
+    let k0 = lin.constant();
+    let (k, rel) = match rel {
+        Relation::Lt => (k0.checked_add(1), Relation::Le),
+        Relation::Gt => (k0.checked_sub(1), Relation::Ge),
+        other => (Some(k0), *other),
+    };
+    let Some(k) = k else {
+        return Tightened::Unchanged;
+    };
+    // `Ge` is `-lin <= 0`, so flip the signs of the coefficients and constant.
+    let (flip, rel) = match rel {
+        Relation::Ge => (-1i64, Relation::Le),
+        other => (1i64, other),
+    };
+    let Some(k) = k.checked_mul(flip) else {
+        return Tightened::Unchanged;
+    };
+    let mut terms = Vec::with_capacity(lin.terms().len());
+    let mut gcd: u64 = 0;
+    for (v, a) in lin.terms() {
+        let Some(scaled) = a.checked_mul(flip) else {
+            return Tightened::Unchanged;
+        };
+        gcd = gcd_u64(gcd, scaled.unsigned_abs());
+        terms.push((v.clone(), scaled));
+    }
+    let Ok(g) = i64::try_from(gcd) else {
+        return Tightened::Unchanged;
+    };
+    if g <= 1 {
+        // Nothing to divide, so only the strictness rewrite above applies.
+        return match Linear::from_parts(terms, k) {
+            Some(l) => Tightened::Constraint(Constraint(l, rel)),
+            None => Tightened::Unchanged,
+        };
+    }
+    let divided: Vec<(String, i64)> = terms.into_iter().map(|(v, a)| (v, a / g)).collect();
+    match rel {
+        // sum(a·x) + k <= 0  <=>  sum(a/g·x) <= -k/g, rounded down.
+        Relation::Le => {
+            let Some(neg) = k.checked_neg() else {
+                return Tightened::Unchanged;
+            };
+            let bound = neg.div_euclid(g);
+            let Some(constant) = bound.checked_neg() else {
+                return Tightened::Unchanged;
+            };
+            match Linear::from_parts(divided, constant) {
+                Some(l) => Tightened::Constraint(Constraint(l, Relation::Le)),
+                None => Tightened::Unchanged,
+            }
+        }
+        // sum(a·x) + k = 0 has an integer solution only when g divides k.
+        Relation::Eq => {
+            if k % g != 0 {
+                return Tightened::Unsatisfiable;
+            }
+            match Linear::from_parts(divided, k / g) {
+                Some(l) => Tightened::Constraint(Constraint(l, Relation::Eq)),
+                None => Tightened::Unchanged,
+            }
+        }
+        // `Ne` and the rest are left to the rational case split.
+        _ => Tightened::Unchanged,
+    }
+}
+
+fn gcd_u64(a: u64, b: u64) -> u64 {
+    if b == 0 {
+        a
+    } else {
+        gcd_u64(b, a % b)
+    }
+}
+
+/// True when the constraints have no integer solution. This is sound: it
+/// first tightens each constraint for the integers, then asks the rational
+/// solver. A rational proof of UNSAT is also an integer proof. The converse
+/// does not hold, which is why tightening exists. Only the UNSAT answer is
+/// meant for integer reasoning. A `Sat` model from [`decide`] can be fractional.
+pub fn unsat_integer(cs: &[Constraint]) -> bool {
+    match tighten(cs) {
+        None => true,
+        Some(t) => unsat(&t),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -892,5 +1017,55 @@ mod tests {
             .collect::<Vec<_>>();
         let verdict = decide(&many).expect("no hard error");
         assert!(matches!(verdict, Verdict::Unknown(_)), "got {verdict:?}");
+    }
+}
+
+#[cfg(test)]
+mod integer_tests {
+    use super::*;
+
+    /// `a·x + b·y + k (rel) 0`.
+    fn row(a: i64, b: i64, k: i64, rel: Relation) -> Constraint {
+        let lin = Linear::from_parts(vec![("x".into(), a), ("y".into(), b)], k).unwrap();
+        Constraint(lin, rel)
+    }
+
+    #[test]
+    fn parity_gap_is_unsat_over_the_integers_only() {
+        // 2x + 2y = 3 has rational solutions and no integer ones.
+        let cs = [row(2, 2, -3, Relation::Eq)];
+        assert!(!unsat(&cs));
+        assert!(unsat_integer(&cs));
+    }
+
+    #[test]
+    fn strict_gap_is_unsat_over_the_integers_only() {
+        // 0 < 2x - 2y < 2 has rational solutions (x - y = 1/2) and no integer ones.
+        let cs = [row(2, -2, 0, Relation::Gt), row(2, -2, -2, Relation::Lt)];
+        assert!(!unsat(&cs));
+        assert!(unsat_integer(&cs));
+    }
+
+    #[test]
+    fn satisfiable_systems_stay_satisfiable() {
+        // x + y >= 1 and x <= 5 have integer solutions.
+        let cs = [row(1, 1, -1, Relation::Ge), row(1, 0, -5, Relation::Le)];
+        assert!(!unsat_integer(&cs));
+        // 2x + 2y = 4 is solvable: x = 1, y = 1.
+        assert!(!unsat_integer(&[row(2, 2, -4, Relation::Eq)]));
+    }
+
+    #[test]
+    fn tightening_never_reports_unsat_for_a_solvable_system() {
+        // A grid of small systems, each with a known integer solution at (1, 1).
+        for a in -3..=3i64 {
+            for b in -3..=3i64 {
+                let k = -(a + b);
+                // a·x + b·y + k = 0 holds at (1, 1); it must not be reported unsat.
+                assert!(!unsat_integer(&[row(a, b, k, Relation::Eq)]), "a={a} b={b}");
+                // a·x + b·y + k <= 0 holds at (1, 1) when the constant is -(a+b).
+                assert!(!unsat_integer(&[row(a, b, k, Relation::Le)]), "a={a} b={b}");
+            }
+        }
     }
 }

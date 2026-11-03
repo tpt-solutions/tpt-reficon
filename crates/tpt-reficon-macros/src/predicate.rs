@@ -18,7 +18,7 @@ use syn::spanned::Spanned;
 use syn::{BinOp, Expr, Lit, UnOp};
 
 use tpt_reficon_verifier::ir::{Constraint, Linear, Relation};
-use tpt_reficon_verifier::solver::{entails, unsat};
+use tpt_reficon_verifier::solver::{entails, unsat_integer};
 
 /// A formula in disjunctive normal form: a disjunction of conjunctions.
 ///
@@ -238,7 +238,7 @@ pub fn conjoin(forms: &[Branches]) -> Option<Branches> {
 
 /// True when no assignment satisfies the formula (every branch is UNSAT).
 pub fn is_unsat(branches: &Branches) -> bool {
-    branches.iter().all(|branch| unsat(branch))
+    branches.iter().all(|branch| unsat_integer(branch))
 }
 
 /// True when `domain` alone already proves the formula.
