@@ -159,24 +159,70 @@ fn expand_one(decl: &ForeignItemFn, ast: &syn::File) -> syn::Result<TokenStream>
     let ret = &sig.output;
     let vis = &decl.vis;
     let user_attrs: Vec<&Attribute> = decl.attrs.iter().collect();
-    let has_contract = user_attrs
+    let is_contract = |a: &Attribute| a.path().is_ident("requires") || a.path().is_ident("ensures");
+    let contract_attrs: Vec<&Attribute> = user_attrs
         .iter()
-        .any(|a| a.path().is_ident("requires") || a.path().is_ident("ensures"));
+        .copied()
+        .filter(|a| is_contract(a))
+        .collect();
+    let doc_attrs: Vec<&Attribute> = user_attrs
+        .iter()
+        .copied()
+        .filter(|a| !is_contract(a))
+        .collect();
+    let has_contract = !contract_attrs.is_empty();
+    // A raw pointer argument can dangle or be null, so calling the function
+    // with one is the caller's obligation: the public wrapper is `unsafe`.
+    let has_pointer = sig
+        .inputs
+        .iter()
+        .any(|arg| matches!(arg, FnArg::Typed(pt) if matches!(*pt.ty, Type::Ptr(_))));
 
-    let wrapper_body = quote! {
-        #(#user_attrs)*
-        #[allow(unsafe_code)]
-        #vis fn #name(#(#wrapper_args),*) #ret {
-            // SAFETY: the signature was checked against the header above, and
-            // every precondition declared on this wrapper has already been
-            // checked by `#[contract]` when that predicate applies.
-            unsafe { #raw(#(#call_args),*) }
+    let wrapper = if !has_contract && !has_pointer {
+        quote! {
+            #(#doc_attrs)*
+            #[allow(unsafe_code)]
+            #vis fn #name(#(#wrapper_args),*) #ret {
+                // SAFETY: the signature was checked against the header above.
+                unsafe { #raw(#(#call_args),*) }
+            }
         }
-    };
-    let wrapper = if has_contract {
-        super::contract::expand(TokenStream::new(), wrapper_body)?
     } else {
-        wrapper_body
+        // The checked body is a private, safe function. `#[contract]` rejects
+        // `unsafe fn`, so the contract cannot sit on the public wrapper when
+        // that wrapper is `unsafe`. The public wrapper only forwards.
+        let checked = format_ident!("__tpt_checked_{}", name);
+        let inner = quote! {
+            #(#contract_attrs)*
+            #[allow(unsafe_code)]
+            fn #checked(#(#wrapper_args),*) #ret {
+                // SAFETY: the signature was checked against the header above,
+                // and every precondition declared on this wrapper has already
+                // been checked by `#[contract]` when that predicate applies.
+                unsafe { #raw(#(#call_args),*) }
+            }
+        };
+        let inner = if has_contract {
+            super::contract::expand(TokenStream::new(), inner)?
+        } else {
+            inner
+        };
+        let (unsafe_kw, safety_doc) = if has_pointer {
+            (
+                quote!(unsafe),
+                quote!(#[doc = "# Safety\n\nEvery pointer argument must be valid for the C function it is passed to."]),
+            )
+        } else {
+            (TokenStream::new(), TokenStream::new())
+        };
+        quote! {
+            #inner
+            #(#doc_attrs)*
+            #safety_doc
+            #vis #unsafe_kw fn #name(#(#wrapper_args),*) #ret {
+                #checked(#(#call_args),*)
+            }
+        }
     };
 
     let link = LitStr::new(&c_name, sig.ident.span());
@@ -385,5 +431,45 @@ mod tests {
             msg.contains("unknown `ffi_wrappers` key `flavour`"),
             "{msg}"
         );
+    }
+
+    /// Expands a declaration against `buffer.h`, whose `sum_values` takes a
+    /// raw pointer.
+    fn expand_buffer(decl: &str) -> syn::Result<String> {
+        let header = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../tpt-reficon/tests/ffi/buffer.h"
+        );
+        let src = format!(
+            r#"header = "{}"; bridge = "c"; {decl}"#,
+            header.replace('\\', "/")
+        );
+        let input: TokenStream = src.parse().unwrap();
+        expand(input).map(|ts| ts.to_string())
+    }
+
+    #[test]
+    fn wrapper_taking_a_raw_pointer_is_unsafe() {
+        // A safe `pub fn` here would let any caller pass a dangling pointer.
+        let out = expand_buffer("pub fn sum_values(values: *const i32, count: u32) -> i32;")
+            .unwrap();
+        assert!(out.contains("unsafe fn sum_values"), "{out}");
+        assert!(out.contains("# Safety"), "{out}");
+    }
+
+    #[test]
+    fn wrapper_without_pointers_stays_safe() {
+        let out = expand_str("pub fn process_payment(amount: i32) -> i32;").unwrap();
+        assert!(!out.contains("unsafe fn process_payment"), "{out}");
+    }
+
+    #[test]
+    fn contract_on_a_pointer_wrapper_is_still_checked() {
+        let out = expand_buffer(
+            "#[requires(count > 0)] pub fn sum_values(values: *const i32, count: u32) -> i32;",
+        )
+        .unwrap();
+        assert!(out.contains("unsafe fn sum_values"), "{out}");
+        assert!(out.contains("precondition"), "{out}");
     }
 }

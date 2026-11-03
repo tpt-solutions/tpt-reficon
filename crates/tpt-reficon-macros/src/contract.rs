@@ -15,7 +15,7 @@ use syn::{Block, Expr, FnArg, Ident, ItemFn, Pat, ReturnType, Type};
 use tpt_reficon_verifier::ir::Constraint;
 use tpt_reficon_verifier::solver::unsat;
 
-use crate::{domain, predicate};
+use crate::{domain, integer, predicate};
 
 /// Name of the binding that holds the body's value while postconditions run.
 /// Double underscores keep it clear of user identifiers.
@@ -29,6 +29,32 @@ struct Param {
     ident: Ident,
     ty: Type,
     integer: bool,
+    mutable: bool,
+}
+
+/// Binds `id` to its `i128` widening inside a `'contract` block. A value that
+/// does not fit in `i128` (only `u128` can) breaks out with `false`, so the
+/// predicate is treated as violated rather than evaluated on a wrapped value.
+fn widen_stmt(id: &Ident) -> TokenStream {
+    quote! {
+        #[allow(unused_variables)]
+        let #id: i128 = match ::core::convert::TryInto::<i128>::try_into(#id) {
+            ::core::result::Result::Ok(v) => v,
+            ::core::result::Result::Err(_) => break 'contract false,
+        };
+    }
+}
+
+/// True when the constraints admit no value: unsatisfiable over ℚ, or, for one
+/// integer variable, no integer in the domain either.
+fn infeasible(cs: &[Constraint], int_var: Option<&str>) -> bool {
+    unsat(cs)
+        || int_var.is_some_and(|v| {
+            matches!(
+                integer::analyze(cs, v),
+                integer::IntegerFeasibility::Infeasible
+            )
+        })
 }
 
 /// Expands `#[contract]` on a function.
@@ -65,6 +91,15 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
     let params = collect_params(&f)?;
     let int_params: Vec<&Param> = params.iter().filter(|p| p.integer).collect();
     let int_names: Vec<String> = int_params.iter().map(|p| p.name.clone()).collect();
+    // The integer-gap analysis handles one variable. With exactly one integer
+    // parameter it runs on that parameter, otherwise it is skipped.
+    let pre_var: Option<&str> = match int_names.as_slice() {
+        [only] => Some(only.as_str()),
+        _ => None,
+    };
+    // A `mut` parameter can be reassigned by the body, so a precondition holds
+    // at exit only if the body leaves it alone. See the `post_elided` note.
+    let has_mut_int = int_params.iter().any(|p| p.mutable);
 
     // Domain premises for every integer parameter.
     let mut premises: Vec<Constraint> = Vec::new();
@@ -79,13 +114,14 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
     };
     let ret_is_int = domain::is_supported_integer(&ret_ty);
 
-    // Preconditions: lower, reject if no arguments can satisfy them, then
-    // decide whether the parameter domains already prove them.
+    // Preconditions: lower, reject if no arguments can satisfy them (over ℚ,
+    // or over ℤ for a single integer parameter), then decide whether the
+    // parameter domains already prove them.
     let pre_dnf = lower_all(&pre_exprs, &int_names)?;
     let feasible = pre_dnf.iter().any(|branch| {
         let mut combined = premises.clone();
         combined.extend(branch.iter().cloned());
-        !unsat(&combined)
+        !infeasible(&combined, pre_var)
     });
     if !feasible {
         return Err(syn::Error::new(
@@ -123,19 +159,41 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
     if ret_is_int {
         post_premises.extend(domain::domain_constraints(&ret_ty, RESULT));
     }
+    let post_var = if ret_is_int { Some(RESULT) } else { None };
+
+    // A postcondition that no entry state and no result can satisfy fails on
+    // every call that returns. Reject it now, the way an unsatisfiable
+    // precondition is rejected.
+    if !post_exprs.is_empty() {
+        let impossible = pre_dnf.iter().all(|pre_branch| {
+            post_dnf.iter().all(|post_branch| {
+                let mut combined = post_premises.clone();
+                combined.extend(pre_branch.iter().cloned());
+                combined.extend(post_branch.iter().cloned());
+                infeasible(&combined, post_var)
+            })
+        });
+        if impossible {
+            return Err(syn::Error::new(
+                f.sig.ident.span(),
+                format!(
+                    "unsatisfiable postcondition on `{fn_name}`: no result satisfies `{}`",
+                    render(&post_exprs)
+                ),
+            ));
+        }
+    }
+
+    // The postcondition may only use the entry preconditions when the body
+    // cannot change the parameters. A `mut` parameter is reassigned at will,
+    // so the check always runs on the exit values, and its elision is skipped.
     let post_elided = pre_dnf.iter().all(|branch| {
         let mut combined = post_premises.clone();
-        combined.extend(branch.iter().cloned());
+        if !has_mut_int {
+            combined.extend(branch.iter().cloned());
+        }
         predicate::entailed_by(&combined, &post_dnf)
-    });
-
-    let widen: Vec<TokenStream> = int_params
-        .iter()
-        .map(|p| {
-            let id = &p.ident;
-            quote!(#[allow(unused_variables)] let #id: i128 = #id as i128;)
-        })
-        .collect();
+    }) && !has_mut_int;
 
     let pre_check = if pre_elided || pre_exprs.is_empty() {
         TokenStream::new()
@@ -145,8 +203,12 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
             render(&pre_exprs)
         );
         let preds = &pre_exprs;
+        let widen: Vec<TokenStream> = int_params.iter().map(|p| widen_stmt(&p.ident)).collect();
         quote! {
-            if !({ #(#widen)* ((#( (#preds) )&&*)) }) {
+            if !('contract: {
+                #(#widen)*
+                (#( (#preds) )&&*)
+            }) {
                 ::core::panic!(#msg)
             }
         }
@@ -164,14 +226,22 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
             render(&post_exprs)
         );
         let posts = &post_exprs;
+        let widen: Vec<TokenStream> = int_params.iter().map(|p| widen_stmt(&p.ident)).collect();
+        // `result` is the body's value, which lives in `temp` until returned.
+        let widen_result = quote! {
+            #[allow(unused_variables)]
+            let #result_id: i128 = match ::core::convert::TryInto::<i128>::try_into(#temp) {
+                ::core::result::Result::Ok(v) => v,
+                ::core::result::Result::Err(_) => break 'contract false,
+            };
+        };
         quote! {
             #pre_check
             let #temp: #ret = (|| -> #ret #block)();
-            if !({
+            if !('contract: {
                 #(#widen)*
-                #[allow(unused_variables)]
-                let #result_id: i128 = #temp as i128;
-                ((#( (#posts) )&&*))
+                #widen_result
+                (#( (#posts) )&&*)
             }) {
                 ::core::panic!(#msg)
             }
@@ -228,6 +298,7 @@ fn collect_params(f: &ItemFn) -> syn::Result<Vec<Param>> {
                         name: pi.ident.to_string(),
                         ident: pi.ident.clone(),
                         integer: domain::is_supported_integer(&ty),
+                        mutable: pi.mutability.is_some(),
                         ty,
                     })
                 }
@@ -348,5 +419,51 @@ mod tests {
     fn result_parameter_conflicts_with_ensures() {
         let msg = expand_err("#[ensures(result > 0)] fn f(result: i64) -> i64 { result }");
         assert!(msg.contains("named `result`"), "{msg}");
+    }
+
+    #[test]
+    fn mut_parameter_postcondition_is_checked_not_elided() {
+        // The body reassigns `x` to -5, so the entry precondition says nothing
+        // about the exit value that `ensures` checks.
+        let out = expand_str(
+            "#[requires(x > 0)] #[ensures(x > 0)] fn f(mut x: i64) -> i64 { x = -5; x }",
+        );
+        assert!(out.contains("postcondition"), "{out}");
+    }
+
+    #[test]
+    fn immutable_parameter_postcondition_is_still_elided() {
+        // Without `mut`, the precondition does hold at exit, so the check is
+        // provably redundant and stays elided.
+        let out = expand_str("#[requires(x > 0)] #[ensures(x > 0)] fn f(x: i64) -> i64 { x }");
+        assert!(!out.contains("postcondition"), "{out}");
+    }
+
+    #[test]
+    fn integer_gap_precondition_is_rejected() {
+        // `x > 5 && x < 6` has rational solutions but no integer one.
+        let msg = expand_err("#[requires(x > 5 && x < 6)] fn f(x: i64) {}");
+        assert!(msg.contains("unsatisfiable contract"), "{msg}");
+    }
+
+    #[test]
+    fn integer_gap_postcondition_is_rejected() {
+        let msg = expand_err("#[ensures(result > 5 && result < 6)] fn f() -> i64 { 0 }");
+        assert!(msg.contains("unsatisfiable postcondition"), "{msg}");
+    }
+
+    #[test]
+    fn postcondition_outside_return_domain_is_rejected() {
+        // `u8` results are at most 255, so `result > 300` can never hold.
+        let msg = expand_err("#[ensures(result > 300)] fn f(x: i32) -> u8 { 0 }");
+        assert!(msg.contains("unsatisfiable postcondition"), "{msg}");
+    }
+
+    #[test]
+    fn u128_contract_values_are_not_wrapped_by_a_cast() {
+        // `as i128` maps u128 values above i128::MAX to negative numbers.
+        let out = expand_str("#[requires(x < 1000)] fn f(x: u128) -> u128 { x }");
+        assert!(!out.contains("as i128"), "{out}");
+        assert!(out.contains("TryInto"), "{out}");
     }
 }
