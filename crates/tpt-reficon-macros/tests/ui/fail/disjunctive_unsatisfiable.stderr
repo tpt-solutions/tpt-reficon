@@ -1,4 +1,4 @@
-error: unsatisfiable refinement type `NoWhere`: no value of `i8` satisfies `(value > 5 && value < 3) || (value > 9 && value < 4)`
+error: unsatisfiable refinement type `NoWhere`: no value of `i8` satisfies `(value > 5 && value < 3) || (value > 9 && value < 4)`; conflicting constraints: `value - 5 > 0`, `value - 3 < 0`
  --> tests/ui/fail/disjunctive_unsatisfiable.rs:4:1
   |
 4 | #[requires((value > 5 && value < 3) || (value > 9 && value < 4))]

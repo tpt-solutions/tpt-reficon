@@ -82,7 +82,8 @@ pub fn expand_refine(input: &DeriveInput) -> syn::Result<TokenStream> {
         syn::Error::new(
             struct_span,
             format!(
-                "unsatisfiable refinement type `{name}`: no value of `{inner_render}` satisfies `{render}`"
+                "unsatisfiable refinement type `{name}`: no value of `{inner_render}` satisfies `{render}`{}",
+                predicate::conflict_note(&dnf)
             ),
         )
     };
@@ -587,5 +588,23 @@ mod remainder_tests {
             syn::parse_str("#[requires(value % 2 == 0)] struct B(u32);").unwrap();
         let out = expand_refine(&input).unwrap().to_string();
         assert!(out.contains("__tpt_check"), "{out}");
+    }
+}
+
+#[cfg(test)]
+mod conflict_tests {
+    use super::*;
+
+    #[test]
+    fn unsatisfiable_refinement_names_a_minimal_conflict() {
+        let input: DeriveInput =
+            syn::parse_str("#[requires(value > 5 && value > 1 && value < 3)] struct B(i64);")
+                .unwrap();
+        let msg = expand_refine(&input).unwrap_err().to_string();
+        assert!(msg.contains("conflicting constraints"), "{msg}");
+        assert!(msg.contains("value - 5 > 0"), "{msg}");
+        assert!(msg.contains("value - 3 < 0"), "{msg}");
+        // `value > 1` does not take part in the conflict, so it is not named.
+        assert!(!msg.contains("value - 1 > 0"), "{msg}");
     }
 }

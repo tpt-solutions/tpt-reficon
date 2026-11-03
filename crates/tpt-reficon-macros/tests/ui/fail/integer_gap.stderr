@@ -1,4 +1,4 @@
-error: unsatisfiable refinement type `NoInteger`: no value of `i32` satisfies `value > 5 && value < 6`
+error: unsatisfiable refinement type `NoInteger`: no value of `i32` satisfies `value > 5 && value < 6`; conflicting constraints: `value - 5 > 0`, `value - 6 < 0`
  --> tests/ui/fail/integer_gap.rs:5:1
   |
 5 | #[requires(value > 5 && value < 6)]

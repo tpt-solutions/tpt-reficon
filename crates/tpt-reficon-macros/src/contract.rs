@@ -254,8 +254,9 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
         return Err(syn::Error::new(
             f.sig.ident.span(),
             format!(
-                "unsatisfiable contract on `{fn_name}`: no arguments satisfy `{}`",
-                render(&pre_exprs)
+                "unsatisfiable contract on `{fn_name}`: no arguments satisfy `{}`{}",
+                render(&pre_exprs),
+                predicate::conflict_note(&pre_dnf)
             ),
         ));
     }
@@ -732,5 +733,19 @@ mod integer_gap_tests {
             .unwrap();
         let msg = expand(TokenStream::new(), item).unwrap_err().to_string();
         assert!(msg.contains("unsatisfiable contract"), "{msg}");
+    }
+}
+
+#[cfg(test)]
+mod conflict_contract_tests {
+    use super::*;
+
+    #[test]
+    fn unsatisfiable_precondition_names_the_conflict() {
+        let item: TokenStream = "#[requires(x > 5 && x < 3)] fn f(x: i64) {}"
+            .parse()
+            .unwrap();
+        let msg = expand(TokenStream::new(), item).unwrap_err().to_string();
+        assert!(msg.contains("conflicting constraints"), "{msg}");
     }
 }

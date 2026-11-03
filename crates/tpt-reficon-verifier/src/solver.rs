@@ -1020,6 +1020,35 @@ mod tests {
     }
 }
 
+/// A minimal subset of `cs` that has no integer solution, or `None` when `cs`
+/// has one.
+///
+/// Deletion-based: each constraint is removed in turn, and it stays out when the
+/// rest is still UNSAT over the integers. The result is minimal, so removing any
+/// one of its constraints makes it satisfiable. This costs one solver call per
+/// constraint, and it runs only when a refinement is already being rejected.
+pub fn unsat_core_integer(cs: &[Constraint]) -> Option<Vec<Constraint>> {
+    if !unsat_integer(cs) {
+        return None;
+    }
+    let mut core: Vec<Constraint> = cs.to_vec();
+    let mut i = 0;
+    while i < core.len() {
+        let candidate: Vec<Constraint> = core
+            .iter()
+            .enumerate()
+            .filter(|(j, _)| *j != i)
+            .map(|(_, c)| c.clone())
+            .collect();
+        if unsat_integer(&candidate) {
+            core = candidate;
+        } else {
+            i += 1;
+        }
+    }
+    Some(core)
+}
+
 #[cfg(test)]
 mod integer_tests {
     use super::*;
@@ -1044,6 +1073,24 @@ mod integer_tests {
         let cs = [row(2, -2, 0, Relation::Gt), row(2, -2, -2, Relation::Lt)];
         assert!(!unsat(&cs));
         assert!(unsat_integer(&cs));
+    }
+
+    #[test]
+    fn unsat_core_drops_the_irrelevant_constraints() {
+        // x == 0 conflicts with x >= 1. The constraint on y is not part of the conflict.
+        let cs = [
+            row(1, 0, 0, Relation::Eq),
+            row(1, 0, -1, Relation::Ge),
+            row(0, 1, 0, Relation::Ge),
+        ];
+        let core = unsat_core_integer(&cs).expect("unsatisfiable");
+        assert_eq!(core.len(), 2);
+        assert!(unsat_integer(&core));
+    }
+
+    #[test]
+    fn satisfiable_system_has_no_core() {
+        assert!(unsat_core_integer(&[row(1, 0, -1, Relation::Ge)]).is_none());
     }
 
     #[test]

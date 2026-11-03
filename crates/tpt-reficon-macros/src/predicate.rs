@@ -18,7 +18,30 @@ use syn::spanned::Spanned;
 use syn::{BinOp, Expr, Lit, UnOp};
 
 use tpt_reficon_verifier::ir::{Constraint, Linear, Relation};
-use tpt_reficon_verifier::solver::{entails, unsat_integer};
+use tpt_reficon_verifier::solver::{entails, unsat_core_integer, unsat_integer};
+
+/// Names the conflicting constraints of the first unsatisfiable alternative, for an
+/// error message. The result starts with `"; "`, or is empty when no core can be
+/// shown. Constraints that use an internal remainder fact are left out, because
+/// the user never wrote them.
+pub fn conflict_note(branches: &Branches) -> String {
+    let Some(branch) = branches.iter().find(|b| unsat_integer(b)) else {
+        return String::new();
+    };
+    let Some(core) = unsat_core_integer(branch) else {
+        return String::new();
+    };
+    let shown: Vec<String> = core
+        .iter()
+        .filter(|c| !c.0.terms().iter().any(|(v, _)| v.starts_with("__tpt_")))
+        .map(|c| format!("`{c}`"))
+        .collect();
+    if shown.is_empty() {
+        String::new()
+    } else {
+        format!("; conflicting constraints: {}", shown.join(", "))
+    }
+}
 
 /// A formula in disjunctive normal form: a disjunction of conjunctions.
 ///
