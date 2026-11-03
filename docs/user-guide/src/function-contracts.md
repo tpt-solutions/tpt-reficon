@@ -22,6 +22,8 @@ fn scaled(amount: i64, limit: i64, divisor: i64) -> i64 {
 - `#[ensures(...)]` may mention parameters and `result`, the return value. It is
   checked when the function exits, whether through `return` or the tail
   expression.
+- `old(x)` in `#[ensures]` is the value `x` had on entry. The check takes a
+  snapshot before the body runs, so it works for a `mut` parameter too.
 - A violated contract panics. The message names the contract, the function, and
   whether it was a precondition or a postcondition.
 
@@ -38,8 +40,8 @@ fn scaled(amount: i64, limit: i64, divisor: i64) -> i64 {
 
 ## Limits
 
-- Methods and `self` are not supported, nor are generic, `async`, `const`,
-  `unsafe`, or `extern` functions.
+- Methods and `self` are not supported, nor are type-generic, `async`, `const`,
+  `unsafe`, or `extern` functions. Lifetime parameters are allowed.
 - Predicates mention integer parameters only. `#[ensures]` needs an integer
   return type.
 - A parameter named `result` conflicts with `#[ensures]`.

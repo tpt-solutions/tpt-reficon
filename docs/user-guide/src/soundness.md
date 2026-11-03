@@ -13,8 +13,8 @@ solver must keep them.
   predicate follows from the domain.
 - **`ensures` checks the exit value.** On `#[contract]`, `#[ensures(...)]` is
   checked against `result` when the function returns. It is not a full
-  post-state model: it cannot refer to the entry state (`old(x)`), and it covers
-  integer returns only. A `mut` parameter disables elision, because the body can
+  post-state model: `old(x)` names the entry value of an integer parameter, and
+  it covers integer returns only. A `mut` parameter disables elision, because the body can
   change it.
 - **`unsafe` only where C is called.** `unsafe_code` is forbidden across the
   workspace. The one exception is `ffi_wrappers!`, whose expansion calls C. That

@@ -10,7 +10,11 @@ inner value, named by `value` or by `#[refine(variable = "...")]`.
 | Comparison | `value > 0`, `value != 7` |
 | Linear arithmetic | `value + 200 < 300`, `2 * value - 3 >= 0` |
 | Conjunction | `value > 0 && value <= 100` |
-| Disjunction | `value == 0 \|\| value == 42` |
+| Disjunction | `value == 0 || value == 42` |
+| Negation | `!(value > 10 && value < 20)`, `!(value == 5)` |
+| Constant multiplication | `value * 2 < 10`, `3 * value >= 1` |
+| Bool literals | `flag == true` (`bool` fields are 0 and 1) |
+|\| value == 42` |
 
 Several `#[requires(...)]` attributes on one type are conjoined, so these two
 declarations are equivalent:
@@ -38,6 +42,7 @@ runtime check is emitted.
 
 ## Not supported
 
-- Nonlinear terms such as `value * value`. These are rejected with a compile error.
+- Nonlinear terms such as `value * value`, and multiplication of two variables.
+  These are rejected with a compile error. Multiplication by a constant is linear.
 - Predicates that refer to names other than the predicate variable.
 - Generic refined types.

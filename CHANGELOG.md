@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Derive extras on `#[derive(Refine)]`: `From<Refined> for Inner`,
+  `AsRef<Inner>`, `Display` (the inner value), and `FromStr` (parse the inner
+  type, then check the refinement). A type that already implements one of these
+  itself now gets a conflicting-impl error, so remove your impl.
+- `old(x)` in `#[ensures]` names the entry value of an integer parameter. The
+  check takes a snapshot before the body runs, so it holds for `mut` parameters.
+- Predicates accept `!` (pushed inward through comparisons, `&&` and `||`),
+  multiplication by a constant, and `true` and `false` as constants.
 - `#[fractional_borrow]` (feature `unstable`): typed, lock-free shared state for
   a struct of `bool` and integer fields. It emits `<Name>Shared` with one
   permission-guarded cell per field and `try_read_<field>` / `try_write_<field>`

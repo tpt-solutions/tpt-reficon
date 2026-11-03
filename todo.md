@@ -156,11 +156,11 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 
 ## Phase 12 — Usability
 - [x] `RefinementError` and panic messages carry the offending value and predicate
-- [ ] Derive extras: `Display`, `From<T> for Inner`, `AsRef`, `FromStr`, `TryFrom<Inner>`, `Hash`/`Ord`, `const fn` constructors — `From<T> for Inner` is done; the rest is not.
-- [ ] `serde` feature: `Deserialize` routed through `try_new`
-- [ ] Debug-only / off switch for runtime checks
-- [ ] Contracts: methods and `&self`, `const fn`, lifetime generics, `Result`/`Option`-aware `ensures`, `old(x)`
-- [ ] Predicates: `%`/`*` by constant, `!`, `bool`, floats, `.len()` — `*` by a constant and `!` (with De Morgan) are done; the rest is not.
+- [ ] Derive extras: `Display`, `From<T> for Inner`, `AsRef`, `FromStr`, `TryFrom<Inner>`, `Hash`/`Ord`, `const fn` constructors — done: `From<T> for Inner`, `AsRef`, `Display`, `FromStr`. `TryFrom` already existed. `Hash`/`Ord` come from a user derive on the refined type, so the derive does not emit them. `const fn` is not done: the check calls `TryInto`, which is not const.
+- [ ] `serde` feature (not started: the derive would need a serde dependency in the user crate, which a cfg on the user side cannot provide, so the feature needs a design choice first): `Deserialize` routed through `try_new`
+- [ ] Debug-only / off switch for runtime checks (not started: a release build that skips a check is unsound unless the user opts in explicitly, so it needs a decision on the API first)
+- [ ] Contracts: methods and `&self`, `const fn`, lifetime generics, `Result`/`Option`-aware `ensures`, `old(x)` — done: lifetime generics, `old(x)` on integer parameters. Still open: methods, `&self`, `const fn`, and `Result`/`Option`-aware `ensures`.
+- [ ] Predicates: `%`/`*` by constant, `!`, `bool`, floats, `.len()` — done: `*` by a constant, `!`, and `true`/`false` literals (so `bool` fields compare with `== true`). Still open: `%`, floats, `.len()`.
 - [ ] Fractions: real splitting in `SharedU64` and the permission prover
 
 ## Phase 13 — Adoption: Examples, Templates, Docs

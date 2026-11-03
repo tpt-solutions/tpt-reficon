@@ -113,7 +113,7 @@ one another.
   predicate grammar is linear comparisons combined with `&&` / `||` on `i64`
   coefficients. `proptest` remains the tool for everything nonlinear.
 - **No full post-state model:** `#[ensures(...)]` checks the integer return
-  value on exit. It cannot refer to the entry state.
+  value on exit. `old(x)` gives the entry value of an integer parameter.
 - **FFI contracts are partial, and fractional borrows are a prototype.** The
   `ffi` feature covers C headers; Go headers are read through the cgo preamble.
   Fractional borrows sit behind the `unstable` feature.
