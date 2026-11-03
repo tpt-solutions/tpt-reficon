@@ -115,6 +115,107 @@ impl Drop for WriteHandle<'_> {
     }
 }
 
+/// A type that fits in the 64-bit cell behind [`SharedU64`].
+///
+/// Implemented for the primitive integers and `bool`. Signed values round-trip
+/// through `u64` because the casts sign-extend and truncate consistently.
+pub trait Bits: Copy {
+    /// The value's bits, zero-extended to 64 bits.
+    fn to_bits(self) -> u64;
+    /// Rebuilds the value from bits produced by [`Bits::to_bits`].
+    fn from_bits(bits: u64) -> Self;
+}
+
+macro_rules! impl_bits_for_integers {
+    ($($t:ty),* $(,)?) => {$(
+        impl Bits for $t {
+            fn to_bits(self) -> u64 {
+                self as u64
+            }
+            fn from_bits(bits: u64) -> Self {
+                bits as $t
+            }
+        }
+    )*};
+}
+
+impl_bits_for_integers!(u8, u16, u32, u64, i8, i16, i32, i64);
+
+impl Bits for bool {
+    fn to_bits(self) -> u64 {
+        u64::from(self)
+    }
+    fn from_bits(bits: u64) -> Self {
+        bits != 0
+    }
+}
+
+/// A typed, lock-free shared value with fractional permissions.
+#[derive(Debug)]
+pub struct Shared<T: Bits> {
+    cell: SharedU64,
+    _ty: core::marker::PhantomData<fn() -> T>,
+}
+
+impl<T: Bits> Shared<T> {
+    /// Creates a shared value holding `value`.
+    pub fn new(value: T) -> Self {
+        Shared {
+            cell: SharedU64::new(value.to_bits()),
+            _ty: core::marker::PhantomData,
+        }
+    }
+
+    /// Takes one unit of read permission. See [`SharedU64::try_read`].
+    pub fn try_read(&self) -> Option<Read<'_, T>> {
+        self.cell.try_read().map(|inner| Read {
+            inner,
+            _ty: core::marker::PhantomData,
+        })
+    }
+
+    /// Takes the whole permission. See [`SharedU64::try_write`].
+    pub fn try_write(&self) -> Option<Write<'_, T>> {
+        self.cell.try_write().map(|inner| Write {
+            inner,
+            _ty: core::marker::PhantomData,
+        })
+    }
+}
+
+/// Read permission on a [`Shared`] value. Returns its unit on drop.
+#[derive(Debug)]
+pub struct Read<'a, T: Bits> {
+    inner: ReadHandle<'a>,
+    _ty: core::marker::PhantomData<fn() -> T>,
+}
+
+impl<T: Bits> Read<'_, T> {
+    /// The current value.
+    pub fn get(&self) -> T {
+        T::from_bits(self.inner.get())
+    }
+}
+
+/// The whole permission on a [`Shared`] value. Returns it on drop.
+#[derive(Debug)]
+pub struct Write<'a, T: Bits> {
+    inner: WriteHandle<'a>,
+    _ty: core::marker::PhantomData<fn() -> T>,
+}
+
+impl<T: Bits> Write<'_, T> {
+    /// The current value.
+    pub fn get(&self) -> T {
+        T::from_bits(self.inner.get())
+    }
+
+    /// Replaces the value.
+    pub fn set(&self, value: T) {
+        self.inner.set(value.to_bits());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,5 +313,16 @@ mod tests {
         for r in readers {
             r.join().unwrap();
         }
+    }
+
+    #[test]
+    fn typed_values_round_trip_including_signed_and_bool() {
+        let i = Shared::new(-5i16);
+        assert_eq!(i.try_read().unwrap().get(), -5);
+        let b = Shared::new(true);
+        assert!(b.try_read().unwrap().get());
+        let w = Shared::new(3u8);
+        w.try_write().unwrap().set(200);
+        assert_eq!(w.try_read().unwrap().get(), 200);
     }
 }
