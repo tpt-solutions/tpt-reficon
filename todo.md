@@ -177,7 +177,7 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 
 ## Phase 15 — Innovation (after v0.1.0)
 - [ ] Tri-state solver result `Valid | Invalid(model) | Unknown(reason)`, unsat cores, counterexamples in compile errors — open. The verifier already returns `Sat`, `Unsat` or `Unknown`, which is most of the tri-state. Unsat cores are a new solver feature.
-- [ ] Integer tightening (gcd normalisation, strict-bound tightening) to close the ℚ/ℤ gap — open. The single-variable integer analysis is already exact. The multi-variable gap needs gcd normalisation in the solver.
+- [x] Integer tightening (gcd normalisation, strict-bound tightening) to close the ℚ/ℤ gap — done for UNSAT. `verifier::solver::tighten` divides each row by the gcd of its coefficients and turns strict bounds into non-strict ones with the constant adjusted. `unsat_integer` decides UNSAT on the tightened set. The derive and `#[contract]` use it, so `a + a + b + b == 3` is a compile error. `decide` keeps its rational models, which can be fractional, and only the UNSAT answer is integer-exact.
 - [ ] `cargo reficon explain <Type>` plus a CI gate on new runtime checks — open. It needs a CLI crate.
 - [x] Elision verdict in generated rustdoc on `new` — each constructor now says whether its check was proven by the domain or kept at runtime.
 - [x] Predicate-derived `proptest`/`arbitrary` strategies — `#[refine(proptest)]` writes an `Arbitrary` impl that draws the inner type and keeps the values `try_new` accepts. Opt-in, like serde.

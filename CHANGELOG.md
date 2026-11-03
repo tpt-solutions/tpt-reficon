@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Predicates accept `!` (pushed inward through comparisons, `&&` and `||`),
   multiplication by a constant, `%` by a positive literal over unsigned types,
   and `true` and `false` as constants.
+- Integer tightening: a conjunction with no integer solution is a compile error
+  even when it has rational solutions, such as `a + a + b + b == 3` (`contract`
+  and the derive). The rational `decide` is unchanged.
 - `refined!(Type, literal)` checks a literal at compile time. A literal that
   breaks the refinement fails to compile. Each refined type gets a hidden
   `const fn __tpt_check`, which the macro uses.
