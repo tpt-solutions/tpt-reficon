@@ -5,9 +5,14 @@
 - **Refinement types** — a newtype carries a predicate over its inner value
   (`value > 0 && value <= 100`). Construction either proves the predicate at
   macro-expansion time, or emits a precise runtime check.
-- **FFI contracts and fractional borrows** — planned, not yet implemented. See
-  the [FFI contracts](ffi-contracts.md) and [fractional borrows](fractional-borrows.md)
-  chapters for their current status.
+- **Function contracts** — `#[contract]` checks `#[requires]` at entry and
+  `#[ensures]` on the return value. Checks the parameter domains prove are removed.
+- **FFI contracts** (feature `ffi`) — `#[ffi_contract]` proves a `repr(C)` struct
+  matches its C header layout, and `ffi_wrappers!` declares checked wrappers
+  around C functions. Partial: see the [FFI contracts](ffi-contracts.md) chapter.
+- **Fractional borrows** (feature `unstable`) — a prototype that turns a struct of
+  integers and `bool` into lock-free shared state with fractional permissions.
+  See the [fractional borrows](fractional-borrows.md) chapter.
 
 Everything is decided by an in-house Fourier–Motzkin QF_LRA solver, ported from
 [tpt-telos](https://github.com/tpt-solutions/tpt-telos). The solver is a
@@ -20,7 +25,9 @@ self-contained Rust module, so the workspace has no external solver dependency.
 tpt-reficon = "0.1"
 ```
 
-```rust
+```rust,edition2021
+# extern crate tpt_reficon;
+# extern crate tpt_reficon_core;
 use tpt_reficon::prelude::*;
 
 #[derive(Refine)]

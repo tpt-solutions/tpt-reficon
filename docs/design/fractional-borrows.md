@@ -7,7 +7,7 @@ Status: research prototype. Two pieces exist:
 - a runtime accessor, `SharedU64` in `crates/tpt-reficon-core/src/fractional.rs`
   (feature `unstable`), built on atomics with no `unsafe`.
 
-The `#[fractional_borrow]` macro that would generate such accessors is not built yet.
+The `#[fractional_borrow]` macro generates per-field accessors like these (feature `unstable`). The handle model in the Design section below is not built yet.
 
 ## Literature review
 
@@ -36,7 +36,7 @@ out of scope.
 
 ## Design
 
-Surface syntax (proposed, not implemented):
+Surface syntax (what the macro accepts). The handle model that follows is the design, not yet built:
 
 ```rust
 #[fractional_borrow]

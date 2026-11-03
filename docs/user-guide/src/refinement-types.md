@@ -3,7 +3,9 @@
 Apply `#[derive(Refine)]` to a tuple struct with one field, or to a struct with
 one named field:
 
-```rust
+```rust,edition2021
+# extern crate tpt_reficon;
+# extern crate tpt_reficon_core;
 use tpt_reficon::prelude::*;
 
 #[derive(Refine)]

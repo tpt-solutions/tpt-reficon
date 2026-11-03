@@ -15,7 +15,7 @@ inner value, named by `value` or by `#[refine(variable = "...")]`.
 Several `#[requires(...)]` attributes on one type are conjoined, so these two
 declarations are equivalent:
 
-```rust
+```text
 #[requires(value > 0 && value <= 100)]
 // is the same as
 #[requires(value > 0)]

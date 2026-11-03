@@ -3,7 +3,9 @@
 `#[contract]` adds pre- and postconditions to a plain function. Integer
 parameters and an integer return value are supported.
 
-```rust
+```rust,edition2021
+# extern crate tpt_reficon;
+# extern crate tpt_reficon_core;
 use tpt_reficon::prelude::*;
 
 #[contract]                              // must be the outermost attribute
@@ -43,4 +45,4 @@ fn scaled(amount: i64, limit: i64, divisor: i64) -> i64 {
 - A parameter named `result` conflicts with `#[ensures]`.
 
 The design, and the reasons for these choices, are in
-[`docs/design/function-contracts.md`](../../design/function-contracts.md).
+[`docs/design/function-contracts.md`](https://github.com/tpt-solutions/tpt-reficon/blob/master/docs/design/function-contracts.md).

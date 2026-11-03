@@ -14,7 +14,9 @@ tpt-reficon = { version = "0.1", features = ["ffi"] }
 Building with it needs libclang installed, because bindgen loads it at build
 time.
 
-```rust
+```rust,ignore
+# extern crate tpt_reficon;
+# extern crate tpt_reficon_core;
 use tpt_reficon::prelude::*;
 
 #[ffi_contract(bridge = "c", header = "payment.h", c_name = "payment")]
@@ -29,7 +31,7 @@ pub struct Payment {
 
 - `bridge` is `"c"` or `"go"`. Both read a C header. A Go struct only crosses the
   boundary when it is declared as a C struct in the cgo preamble. See
-  [`docs/design/go-header-ingestion.md`](../../design/go-header-ingestion.md).
+  [`docs/design/go-header-ingestion.md`](https://github.com/tpt-solutions/tpt-reficon/blob/master/docs/design/go-header-ingestion.md).
 - `header` is relative to the crate's `CARGO_MANIFEST_DIR`.
 - `c_name` is optional. Use it when the C struct name differs from the Rust name.
 

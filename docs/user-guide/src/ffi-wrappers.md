@@ -2,7 +2,9 @@
 
 `ffi_wrappers!` declares safe Rust functions around C functions in a header.
 
-```rust
+```rust,ignore
+# extern crate tpt_reficon;
+# extern crate tpt_reficon_core;
 use tpt_reficon::prelude::*;
 
 ffi_wrappers! {
@@ -28,4 +30,4 @@ let doubled = process_payment(21);
 
 The crate that uses the macro must allow `unsafe_code`. A crate that forbids it
 cannot use the macro. The design is in
-[`docs/design/ffi-wrappers.md`](../../design/ffi-wrappers.md).
+[`docs/design/ffi-wrappers.md`](https://github.com/tpt-solutions/tpt-reficon/blob/master/docs/design/ffi-wrappers.md).

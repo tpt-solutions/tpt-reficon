@@ -11,7 +11,8 @@ whole unit, so it cannot coexist with any other holder.
 
 The prototype checks a proposed set of accesses with the solver:
 
-```rust
+```rust,edition2021
+# extern crate tpt_reficon_verifier;
 use tpt_reficon_verifier::permission::{check_configuration, Access};
 
 assert!(check_configuration(&[Access::Read, Access::Read]).is_ok());
@@ -24,7 +25,9 @@ once.
 `#[fractional_borrow]` (feature `unstable`) turns a struct of integers and
 `bool` into lock-free shared state:
 
-```rust
+```rust,edition2021
+# extern crate tpt_reficon;
+# extern crate tpt_reficon_core;
 use tpt_reficon::prelude::*;
 
 #[fractional_borrow]
@@ -45,4 +48,4 @@ Permission is per field. Writers on `hits` do not block readers of `ok`.
 
 The design, the literature review (Boyland 2003, Bornat et al. 2005, Iris,
 RustBelt, Prusti, Creusot), and the limits are in
-[`docs/design/fractional-borrows.md`](../../design/fractional-borrows.md).
+[`docs/design/fractional-borrows.md`](https://github.com/tpt-solutions/tpt-reficon/blob/master/docs/design/fractional-borrows.md).

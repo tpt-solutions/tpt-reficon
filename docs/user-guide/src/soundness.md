@@ -11,8 +11,15 @@ solver must keep them.
   degrade to "could not prove" rather than to a wrong answer.
 - **Zero-cost means proven.** A check is removed only when the solver proves the
   predicate follows from the domain.
-- **`ensures` is not yet a post-condition.** `#[ensures(...)]` is currently
-  treated as an additional `requires(...)`. Real post-state semantics are tracked
-  in `todo.md` under Phase 2.
-- **No `unsafe`.** `unsafe_code` is forbidden across the workspace, including in
-  generated code.
+- **`ensures` checks the exit value.** On `#[contract]`, `#[ensures(...)]` is
+  checked against `result` when the function returns. It is not a full
+  post-state model: it cannot refer to the entry state (`old(x)`), and it covers
+  integer returns only. A `mut` parameter disables elision, because the body can
+  change it.
+- **`unsafe` only where C is called.** `unsafe_code` is forbidden across the
+  workspace. The one exception is `ffi_wrappers!`, whose expansion calls C. That
+  call is confined to a wrapper marked `#[allow(unsafe_code)]`, and a wrapper
+  that takes a raw pointer is `unsafe fn`. The derive and `#[contract]` expand
+  to no `unsafe`.
+- **No unchecked constructor.** `Refine` has no public constructor that skips the
+  predicate. Values enter only through `new`, `try_new`, and the `TryFrom` impl.

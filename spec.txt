@@ -1,3 +1,10 @@
+> **Status banner (2026-11):** this is the original design document, and the
+> implementation has diverged from it in places. The frontend targets an
+> in-house constraint IR rather than SMT-LIB2 (see `CHANGELOG.md`). `#[ensures]`
+> checks only the integer return value, FFI contracts are partial behind the
+> `ffi` feature, and fractional borrows are a prototype behind `unstable`.
+> `README.md` and `todo.md` describe what is implemented today.
+
 # Design Document: `tpt-reficon`
 ## Refinement Types, FFI Contracts, and Fractional Borrows
 

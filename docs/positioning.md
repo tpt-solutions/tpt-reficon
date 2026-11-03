@@ -49,14 +49,15 @@ properties the solver cannot decide (nonlinear, unbounded, historical state).
 ### FFI — complements, does not replace, `bindgen`
 
 `bindgen` trusts the header and emits `unsafe`. That `unsafe` is a burden you
-must audit every time the header changes. The planned `#[ffi_contract]` path is
-a *verification layer on top of* (or instead of) that auditing:
+must audit every time the header changes. The `#[ffi_contract]` path (feature
+`ffi`) is a *verification layer on top of* (or instead of) that auditing:
 
-- `prove_equivalent`/`prove_within_bounds` already ship in
-  `tpt-reficon-verifier` (ported from `tpt-telos-uir-bridge`) to compare
-  `repr(C)` layouts.
-- The Phase 4 macro will parse the header, derive the expected layout, prove
-  the struct matches, and generate safe call sites enforcing preconditions.
+- `prove_equivalent`/`prove_within_bounds` ship in `tpt-reficon-verifier`
+  (ported from `tpt-telos-uir-bridge`) to compare `repr(C)` layouts.
+- `#[ffi_contract]` reads the layout from the header through bindgen, proves the
+  struct matches it, and checks each field's type against the compile target.
+- `ffi_wrappers!` checks each declared signature against the header and
+  generates safe call sites that enforce preconditions.
 
 So: `bindgen` converts the header into Rust; we convert the header into a
 *layout proof* and a *safe call*. If you already use `bindgen`, tpt-reficon is a
@@ -73,24 +74,49 @@ codebase is exactly the kind of interface a future header parser can check.
 
 | Question | `bindgen` | `cbindgen` | `proptest` | `tpt-reficon` |
 | --- | --- | --- | --- | --- |
-| Converts headers to Rust? | ✅ | ❌ | ❌ | planned (header → layout proof) |
+| Converts headers to Rust? | ✅ | ❌ | ❌ | ❌ (checks, does not generate types) |
 | Converts Rust to headers? | ❌ | ✅ | ❌ | ❌ |
-| Verifies layout/ABI? | no | no | no | yes (planned for FFI) |
-| Emits `unsafe` code? | yes | n/a | no | **no** (safe wrappers; `unsafe_code` is `forbid`) |
+| Verifies layout/ABI? | no | no | no | yes (`ffi` feature) |
+| Emits `unsafe` code? | yes | n/a | no | **only** in `ffi_wrappers!`, which calls C; confined and marked |
 | Runtime test generator? | no | no | yes | no |
 | Static *proof* of predicates? | no | no | no | yes (QF_LRA subset) |
 | Failure mode | goes wrong silently if header lies | goes wrong silently if code drifts | finds counterexamples (probabilistic) | **compile error or elision; never a wrong verdict** |
 | Maturity | mature | mature | mature | 0.1.0, pre-publish |
+
+### Other verification tools
+
+These are the tools a reader is most likely to compare against. Each answers a
+different question, so they complement each other more often than they replace
+one another.
+
+- **`nutype`** generates newtypes whose constructors sanitise and validate. The
+  check is a runtime call, and nothing is proven. `tpt-reficon` checks the same
+  kind of constructor, but a predicate the type's domain already implies is
+  removed, and a predicate no value satisfies is a compile error.
+- **Prusti** and **Creusot** are deductive verifiers. They take full functional
+  specifications written in Rust and discharge them with a separate prover
+  (Viper and Why3 respectively). They can express far more than linear
+  predicates, and they need more annotations to do it. `tpt-reficon` takes one
+  attribute per predicate and needs no prover beyond its own solver.
+- **Kani** is a bounded model checker. It explores a harness's behaviours up to
+  a bound and reports counterexamples. It can find bugs a refinement cannot
+  express, but it says nothing beyond its bound. A refinement holds for every
+  value of its type.
+- **Flux** is a research refinement-type checker for Rust that also uses an SMT
+  solver. It reasons about refinements inside function bodies, where
+  `tpt-reficon` checks predicates on a type and at function boundaries. Its
+  maturity and coverage differ, so check its current state before choosing it.
 
 ## Honest limitations
 
 - **Only linear predicates.** `2*value*value == 8` is out of scope. The
   predicate grammar is linear comparisons combined with `&&` / `||` on `i64`
   coefficients. `proptest` remains the tool for everything nonlinear.
-- **Single post-state model is not yet real:** `#[ensures(...)]` is currently a
-  synonym for an extra `#[requires(...)]` (see `README.md` soundness notes).
-- **FFI contracts and fractional borrows are not shipped yet** (Phases 4–5 in
-  `todo.md`). The verifier's layout utilities are available today.
+- **No full post-state model:** `#[ensures(...)]` checks the integer return
+  value on exit. It cannot refer to the entry state.
+- **FFI contracts are partial, and fractional borrows are a prototype.** The
+  `ffi` feature covers C headers; Go headers are read through the cgo preamble.
+  Fractional borrows sit behind the `unstable` feature.
 - **`Unknown` is a feature, but it is a leak:** when the solver cannot prove a
   predicate it emits a runtime check rather than eliding it. That is the
   *correct* bias (never a false proof), but it means some checks are retained
