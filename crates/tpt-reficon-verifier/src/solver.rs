@@ -680,7 +680,9 @@ mod tests {
     }
 
     fn lin(s: &str, k: i64) -> Linear {
-        Linear::var(s).checked_add(&Linear::constant_only(k)).unwrap()
+        Linear::var(s)
+            .checked_add(&Linear::constant_only(k))
+            .unwrap()
     }
 
     #[test]
@@ -768,8 +770,10 @@ mod tests {
             c(lin("x", -5), Relation::Eq),
             c(
                 Linear::var("y")
-                    .checked_add(&Linear::var("x").checked_scale(-2).unwrap()).unwrap()
-                    .checked_add(&Linear::constant_only(3)).unwrap(),
+                    .checked_add(&Linear::var("x").checked_scale(-2).unwrap())
+                    .unwrap()
+                    .checked_add(&Linear::constant_only(3))
+                    .unwrap(),
                 Relation::Eq,
             ),
         ];
@@ -822,8 +826,10 @@ mod tests {
         let premises = [
             c(
                 Linear::var("x")
-                    .checked_add(&Linear::var("y")).unwrap()
-                    .checked_add(&Linear::constant_only(-1)).unwrap(),
+                    .checked_add(&Linear::var("y"))
+                    .unwrap()
+                    .checked_add(&Linear::constant_only(-1))
+                    .unwrap(),
                 Relation::Le,
             ),
             c(Linear::var("x"), Relation::Ge),
@@ -850,8 +856,10 @@ mod tests {
         let cs = [
             c(
                 Linear::var("y")
-                    .checked_add(&Linear::var("x").checked_scale(-2).unwrap()).unwrap()
-                    .checked_add(&Linear::constant_only(-1)).unwrap(),
+                    .checked_add(&Linear::var("x").checked_scale(-2).unwrap())
+                    .unwrap()
+                    .checked_add(&Linear::constant_only(-1))
+                    .unwrap(),
                 Relation::Le,
             ),
             c(lin("x", -3), Relation::Le),
@@ -864,8 +872,10 @@ mod tests {
         assert!(unsat(&[
             c(
                 Linear::var("x")
-                    .checked_add(&Linear::var("y")).unwrap()
-                    .checked_add(&Linear::constant_only(-1)).unwrap(),
+                    .checked_add(&Linear::var("y"))
+                    .unwrap()
+                    .checked_add(&Linear::constant_only(-1))
+                    .unwrap(),
                 Relation::Le
             ),
             c(lin("x", -1), Relation::Ge),

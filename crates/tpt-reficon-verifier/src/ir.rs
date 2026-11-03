@@ -341,16 +341,16 @@ mod tests {
         let x2 = Linear::from_parts(vec![("x".into(), i64::MAX)], 0).unwrap();
         assert_eq!(x2.checked_add(&Linear::var("x")), None);
         // Negating i64::MIN on the subtraction path is also an overflow.
-        assert_eq!(Linear::constant_only(0).checked_sub(&Linear::constant_only(i64::MIN)), None);
+        assert_eq!(
+            Linear::constant_only(0).checked_sub(&Linear::constant_only(i64::MIN)),
+            None
+        );
     }
 
     #[test]
     fn from_parts_merges_duplicate_variables() {
-        let l = Linear::from_parts(
-            vec![("x".into(), 2), ("y".into(), 1), ("x".into(), -2)],
-            4,
-        )
-        .unwrap();
+        let l = Linear::from_parts(vec![("x".into(), 2), ("y".into(), 1), ("x".into(), -2)], 4)
+            .unwrap();
         // The two `x` entries cancel and drop out entirely.
         assert_eq!(l.terms(), [("y".to_string(), 1)].as_slice());
         assert_eq!(l.constant(), 4);

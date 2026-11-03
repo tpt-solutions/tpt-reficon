@@ -21,7 +21,8 @@ fn lin(var: &str, k: i64, offset: i64) -> Linear {
     Linear::var(var)
         .checked_scale(k)
         .unwrap()
-        .checked_add(&Linear::constant_only(offset)).unwrap()
+        .checked_add(&Linear::constant_only(offset))
+        .unwrap()
 }
 
 fn c(lin: Linear, rel: Relation) -> Constraint {
@@ -68,7 +69,10 @@ fn main() {
             "equality_reference",
             vec![
                 c(lin("x", 1, -5), Relation::Eq),
-                c(lin("y", 1, 0).checked_add(&lin("x", -2, 0)).unwrap(), Relation::Eq),
+                c(
+                    lin("y", 1, 0).checked_add(&lin("x", -2, 0)).unwrap(),
+                    Relation::Eq,
+                ),
             ],
         ),
         (
@@ -88,8 +92,14 @@ fn main() {
             vec![
                 c(lin("x", 1, 0), Relation::Ge),
                 c(lin("y", 1, 0), Relation::Ge),
-                c(lin("x", 1, 0).checked_add(&lin("y", 1, -1)).unwrap(), Relation::Le),
-                c(lin("y", 1, 0).checked_add(&lin("x", -2, -1)).unwrap(), Relation::Le),
+                c(
+                    lin("x", 1, 0).checked_add(&lin("y", 1, -1)).unwrap(),
+                    Relation::Le,
+                ),
+                c(
+                    lin("y", 1, 0).checked_add(&lin("x", -2, -1)).unwrap(),
+                    Relation::Le,
+                ),
             ],
         ),
         (
@@ -99,10 +109,22 @@ fn main() {
                 c(lin("v1", 1, 0), Relation::Ge),
                 c(lin("v2", 1, 0), Relation::Ge),
                 c(lin("v3", 1, 0), Relation::Ge),
-                c(lin("v0", 1, 0).checked_add(&lin("v1", 1, -10)).unwrap(), Relation::Le),
-                c(lin("v1", 1, 0).checked_add(&lin("v2", 1, -10)).unwrap(), Relation::Le),
-                c(lin("v2", 1, 0).checked_add(&lin("v3", 1, -10)).unwrap(), Relation::Le),
-                c(lin("v0", 1, 0).checked_add(&lin("v2", 1, -20)).unwrap(), Relation::Le),
+                c(
+                    lin("v0", 1, 0).checked_add(&lin("v1", 1, -10)).unwrap(),
+                    Relation::Le,
+                ),
+                c(
+                    lin("v1", 1, 0).checked_add(&lin("v2", 1, -10)).unwrap(),
+                    Relation::Le,
+                ),
+                c(
+                    lin("v2", 1, 0).checked_add(&lin("v3", 1, -10)).unwrap(),
+                    Relation::Le,
+                ),
+                c(
+                    lin("v0", 1, 0).checked_add(&lin("v2", 1, -20)).unwrap(),
+                    Relation::Le,
+                ),
             ],
         ),
         (

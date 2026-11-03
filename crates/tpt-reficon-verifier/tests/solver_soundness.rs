@@ -69,8 +69,14 @@ fn constraint_system() -> impl Strategy<Value = Vec<Constraint>> {
         .prop_map(|(inject, mut cs, b)| {
             if inject {
                 let x = Linear::var("x");
-                let gi = Constraint(x.checked_sub(&Linear::constant_only(b)).unwrap(), Relation::Ge); // x >= b
-                let le = Constraint(x.checked_sub(&Linear::constant_only(b - 1)).unwrap(), Relation::Le); // x <= b-1
+                let gi = Constraint(
+                    x.checked_sub(&Linear::constant_only(b)).unwrap(),
+                    Relation::Ge,
+                ); // x >= b
+                let le = Constraint(
+                    x.checked_sub(&Linear::constant_only(b - 1)).unwrap(),
+                    Relation::Le,
+                ); // x <= b-1
                 cs.push(gi);
                 cs.push(le);
             }
