@@ -10,9 +10,10 @@
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::spanned::Spanned;
+use syn::visit_mut::{self, VisitMut};
 use syn::{Block, Expr, FnArg, Ident, ItemFn, Pat, ReturnType, Type};
 
-use tpt_reficon_verifier::ir::Constraint;
+use tpt_reficon_verifier::ir::{Constraint, Linear};
 use tpt_reficon_verifier::solver::unsat;
 
 use crate::{domain, integer, predicate};
@@ -30,6 +31,100 @@ struct Param {
     ty: Type,
     integer: bool,
     mutable: bool,
+}
+
+/// The name of the snapshot that holds the entry value of parameter `name`.
+/// `old(x)` in an `#[ensures]` refers to this snapshot.
+fn old_var(name: &str) -> String {
+    format!("__tpt_old_{name}")
+}
+
+/// The `arg` of `old(arg)`, when `expr` is such a call with one plain identifier.
+fn old_argument(expr: &Expr) -> Option<&Ident> {
+    let Expr::Call(call) = expr else {
+        return None;
+    };
+    let Expr::Path(func) = &*call.func else {
+        return None;
+    };
+    if !func.path.is_ident("old") || call.args.len() != 1 {
+        return None;
+    }
+    let Expr::Path(arg) = &call.args[0] else {
+        return None;
+    };
+    arg.path.get_ident()
+}
+
+/// Replaces every `old(x)` for an integer parameter `x` with its snapshot. Also
+/// returns the parameters that were named, in first-use order.
+struct OldRewriter<'a> {
+    params: &'a [String],
+    found: Vec<String>,
+    error: Option<syn::Error>,
+}
+
+impl VisitMut for OldRewriter<'_> {
+    fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        if let Some(arg) = old_argument(expr).cloned() {
+            let name = arg.to_string();
+            if self.params.contains(&name) {
+                if !self.found.contains(&name) {
+                    self.found.push(name.clone());
+                }
+                let snapshot = Ident::new(&old_var(&name), arg.span());
+                *expr = syn::parse_quote!(#snapshot);
+            } else if self.error.is_none() {
+                self.error = Some(syn::Error::new(
+                    arg.span(),
+                    format!("`old({name})` needs an integer parameter"),
+                ));
+            }
+            return;
+        }
+        visit_mut::visit_expr_mut(self, expr);
+    }
+}
+
+fn rewrite_old(exprs: &[Expr], params: &[String]) -> syn::Result<(Vec<Expr>, Vec<String>)> {
+    let mut out = exprs.to_vec();
+    let mut rewriter = OldRewriter {
+        params,
+        found: Vec::new(),
+        error: None,
+    };
+    for expr in &mut out {
+        rewriter.visit_expr_mut(expr);
+    }
+    if let Some(err) = rewriter.error {
+        return Err(err);
+    }
+    Ok((out, rewriter.found))
+}
+
+/// Renames the parameters in an entry-state branch onto their snapshots. The
+/// names are distinct before and after, so no coefficients merge.
+fn to_entry(branch: &[Constraint], params: &[String]) -> Vec<Constraint> {
+    branch
+        .iter()
+        .map(|Constraint(lin, rel)| {
+            let terms = lin
+                .terms()
+                .iter()
+                .map(|(v, c)| {
+                    let name = if params.contains(v) {
+                        old_var(v)
+                    } else {
+                        v.clone()
+                    };
+                    (name, *c)
+                })
+                .collect();
+            let renamed = Linear::from_parts(terms, lin.constant())
+                .expect("renaming distinct variables cannot merge coefficients");
+            Constraint(renamed, *rel)
+        })
+        .collect()
 }
 
 /// Binds `id` to its `i128` widening inside a `'contract` block. A value that
@@ -106,11 +201,26 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
     // at exit only if the body leaves it alone. See the `post_elided` note.
     let has_mut_int = int_params.iter().any(|p| p.mutable);
 
+    // `old(x)` reads the entry value of `x`. Each named parameter gets a
+    // snapshot, taken before the body runs. Messages keep the source text.
+    let post_src = post_exprs.clone();
+    let (post_exprs, old_names) = rewrite_old(&post_exprs, &int_names)?;
+    let old_params: Vec<(&Param, Ident)> = int_params
+        .iter()
+        .filter(|p| old_names.contains(&p.name))
+        .map(|p| (*p, Ident::new(&old_var(&p.name), Span::call_site())))
+        .collect();
+
     // Domain premises for every integer parameter.
     let mut premises: Vec<Constraint> = Vec::new();
     for p in &int_params {
         premises.extend(domain::domain_constraints(&p.ty, &p.name));
     }
+    // A snapshot holds a value of its parameter's type, so it keeps the domain.
+    let old_domain: Vec<Constraint> = int_params
+        .iter()
+        .flat_map(|p| domain::domain_constraints(&p.ty, &old_var(&p.name)))
+        .collect();
 
     let fn_name = f.sig.ident.to_string();
     let ret_ty: Type = match &f.sig.output {
@@ -159,8 +269,10 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
     if ret_is_int {
         post_allowed.push(RESULT.to_string());
     }
+    post_allowed.extend(old_names.iter().map(|n| old_var(n)));
     let post_dnf = lower_all(&post_exprs, &post_allowed)?;
     let mut post_premises = premises.clone();
+    post_premises.extend(old_domain.iter().cloned());
     if ret_is_int {
         post_premises.extend(domain::domain_constraints(&ret_ty, RESULT));
     }
@@ -178,6 +290,7 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
                 if !has_mut_int {
                     combined.extend(pre_branch.iter().cloned());
                 }
+                combined.extend(to_entry(pre_branch, &int_names));
                 combined.extend(post_branch.iter().cloned());
                 infeasible(&combined, post_var)
             })
@@ -187,20 +300,22 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
                 f.sig.ident.span(),
                 format!(
                     "unsatisfiable postcondition on `{fn_name}`: no result satisfies `{}`",
-                    render(&post_exprs)
+                    render(&post_src)
                 ),
             ));
         }
     }
 
-    // The postcondition may only use the entry preconditions when the body
-    // cannot change the parameters. A `mut` parameter is reassigned at will,
-    // so the check always runs on the exit values, and its elision is skipped.
+    // The postcondition may only use the entry preconditions on the exit values
+    // when the body cannot change the parameters. A `mut` parameter is
+    // reassigned at will, so `ensures` on the exit value skips that elision.
+    // The renamed entry premises are always sound: they talk about snapshots.
     let post_elided = pre_dnf.iter().all(|branch| {
         let mut combined = post_premises.clone();
         if !has_mut_int {
             combined.extend(branch.iter().cloned());
         }
+        combined.extend(to_entry(branch, &int_names));
         predicate::entailed_by(&combined, &post_dnf)
     }) && !has_mut_int;
 
@@ -232,10 +347,21 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
         let result_id = Ident::new(RESULT, Span::call_site());
         let msg = format!(
             "postcondition `{}` of `{fn_name}` violated",
-            render(&post_exprs)
+            render(&post_src)
         );
         let posts = &post_exprs;
-        let widen: Vec<TokenStream> = int_params.iter().map(|p| widen_stmt(&p.ident)).collect();
+        let snapshots: Vec<TokenStream> = old_params
+            .iter()
+            .map(|(p, snapshot)| {
+                let (id, ty) = (&p.ident, &p.ty);
+                quote!(let #snapshot: #ty = #id;)
+            })
+            .collect();
+        let widen: Vec<TokenStream> = int_params
+            .iter()
+            .map(|p| widen_stmt(&p.ident))
+            .chain(old_params.iter().map(|(_, snapshot)| widen_stmt(snapshot)))
+            .collect();
         // `result` is the body's value, which lives in `temp` until returned.
         let widen_result = quote! {
             #[allow(unused_variables)]
@@ -246,6 +372,7 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> 
         };
         quote! {
             #pre_check
+            #(#snapshots)*
             let #temp: #ret = (|| -> #ret #block)();
             if !('contract: {
                 #(#widen)*
@@ -520,5 +647,46 @@ mod attribute_tests {
     fn generated_checks_report_the_caller_location() {
         let out = expand_str("#[requires(x > 0)] fn f(x: i64) -> i64 { x }");
         assert!(out.contains("track_caller"), "{out}");
+    }
+}
+
+#[cfg(test)]
+mod old_tests {
+    use super::*;
+
+    fn expand_str(src: &str) -> String {
+        let item: TokenStream = src.parse().unwrap();
+        expand(TokenStream::new(), item)
+            .unwrap_or_else(|e| panic!("expansion failed: {e}"))
+            .to_string()
+    }
+
+    fn expand_err(src: &str) -> String {
+        let item: TokenStream = src.parse().unwrap();
+        match expand(TokenStream::new(), item) {
+            Ok(_) => panic!("expected an error"),
+            Err(e) => e.to_string(),
+        }
+    }
+
+    #[test]
+    fn old_is_rewritten_to_a_snapshot_taken_before_the_body() {
+        let out = expand_str("#[ensures(result == old(x) + 1)] fn f(x: u8) -> u8 { x + 1 }");
+        assert!(out.contains("__tpt_old_x"), "{out}");
+        assert!(out.contains("let __tpt_old_x : u8 = x"), "{out}");
+        assert!(out.contains("postcondition"), "{out}");
+    }
+
+    #[test]
+    fn old_of_a_non_parameter_is_rejected() {
+        let msg = expand_err("#[ensures(result == old(y))] fn f(x: i64) -> i64 { x }");
+        assert!(msg.contains("needs an integer parameter"), "{msg}");
+    }
+
+    #[test]
+    fn old_in_a_precondition_is_rejected() {
+        // `old` names an entry value, which a precondition cannot refer to.
+        let item: TokenStream = "#[requires(old(x) > 0)] fn f(x: i64) {}".parse().unwrap();
+        assert!(expand(TokenStream::new(), item).is_err());
     }
 }

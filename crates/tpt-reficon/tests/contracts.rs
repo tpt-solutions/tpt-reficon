@@ -94,3 +94,31 @@ fn i64_contract_expands_and_checks() {
     assert_eq!(identity_above_floor(-4), -4);
     assert!(std::panic::catch_unwind(|| identity_above_floor(-5)).is_err());
 }
+
+/// `old(x)` is the entry value of `x`, even though the body changes it.
+#[contract]
+#[requires(x >= 0)]
+#[ensures(x == old(x) + 2)]
+fn add_two(mut x: i64) -> i64 {
+    x += 2;
+    x
+}
+
+#[test]
+fn old_names_the_entry_value_of_a_mutated_parameter() {
+    assert_eq!(add_two(3), 5);
+}
+
+/// The body adds three, so `x == old(x) + 2` fails and the contract panics.
+#[contract]
+#[ensures(x == old(x) + 2)]
+fn add_three_breaks_the_contract(mut x: i64) -> i64 {
+    x += 3;
+    x
+}
+
+#[test]
+#[should_panic(expected = "postcondition")]
+fn old_detects_a_body_that_breaks_the_relation() {
+    add_three_breaks_the_contract(1);
+}
