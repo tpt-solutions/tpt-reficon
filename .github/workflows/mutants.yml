@@ -26,7 +26,7 @@ jobs:
       - name: Run mutants on the verifier
         run: cargo mutants -p tpt-reficon-verifier --timeout 180 --no-shuffle || true
       - name: Keep the report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutants-report
           path: mutants.out
