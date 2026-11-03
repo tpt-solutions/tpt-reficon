@@ -130,3 +130,56 @@ License: dual MIT OR Apache-2.0. Copyright TPT Solutions.
 - [ ] Publish to crates.io in dependency order: `tpt-reficon-verifier` → `tpt-reficon-core` → `tpt-reficon-macros` → `tpt-reficon`
 - [ ] Tag `v0.1.0`, write GitHub release notes
 - [ ] Public announcement / ecosystem outreach
+
+## Phase 10 — Review 2026-11 Soundness Fixes (write the failing test first)
+- [ ] A1 `Linear::add`/`sub` saturate silently (`verifier/src/ir.rs`): make them checked; overflow becomes "unsupported predicate" in `predicate.rs`
+- [ ] A2 Merge duplicate variables in `Linear.terms` in `to_inequalities` (`solver.rs`); make the fields private
+- [ ] A3 `u128` above `i128::MAX` wraps negative in the widened check (`expand.rs`, `contract.rs`, `domain.rs`)
+- [ ] A4 `#[contract]` with `mut` params: snapshot params before the body; never elide `ensures` on them
+- [ ] A5 Seal or make `unsafe` `Refine::from_inner_unchecked`; reject `pub` inner fields in the derive
+- [ ] A6 `ffi_wrappers!` must not emit safe `pub fn` taking raw pointers
+- [ ] A7 Reject or resolve type aliases and non-primitive inner types (`domain.rs`)
+- [ ] A8 `#[contract]`: run the integer-gap check and check `ensures` against the return domain (`contract.rs`)
+- [ ] A9 `layout.rs`: alignment, first-offset and `offsets` length checks in `prove_within_bounds`/`prove_equivalent`; handle empty structs
+- [ ] A10 `solver.rs`: check `uppers*lowers` before combining; share one budget across `!=` leaves
+- [ ] A11 FFI: compare type kind (not just size/align), `c_char`/`c_long` per target, track header changes with `include_bytes!`
+- [ ] Lower severity: `Ident::new` panics on bad `variable`/`r#type`; `satisfies` overflow handling; `Rat` negation/`Ord` panics and `parse_decimal("+-5")`; non-Copy inner types; suffixed literals; lifetime-only generics in `#[contract]`; `#[track_caller]` on `new`/contract panics; struct-level error spans (re-bless `.stderr`); `fractional_borrow` for `usize`/`isize`/`u128`; loom model for `SharedU64`
+
+## Phase 11 — Release Blockers and Stale Docs
+- [ ] Per-crate `LICENSE-*` and `README.md`; absolute links in the facade README; `[package.metadata.docs.rs]` (no `all-features`)
+- [ ] Commit `Cargo.lock` or prove/raise MSRV; run `cargo publish --dry-run` in dependency order
+- [ ] CI: pin `dtolnay/rust-toolchain@stable`, OS matrix, `cargo doc -D warnings`, `mdbook build/test`, Go test job, `cargo hack --each-feature`, `unstable` facade tests, pinned toolchain for trybuild, MSRV `--no-run` tests
+- [ ] Refresh docs that call shipped features "planned": `introduction.md`, `ffi-contracts.md`, `soundness.md`, `positioning.md`, README, `fractional-borrows.md`; add a CHANGELOG entry for `#[fractional_borrow]`
+- [ ] Fix README: "no unsafe" claim (`ffi_wrappers!` emits it), quick-start comment on `new`, nested "Status" heading; fix mdBook `../../design/` links
+- [ ] Fix `todo.md` Phase 4 Go item and the garbled Phase 7 fuzz bullet; update `CONTRIBUTING.md` deps and libclang note; add a banner to `spec.txt`
+- [ ] Add `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue-template `config.yml`
+
+## Phase 12 — Usability
+- [ ] `RefinementError` and panic messages carry the offending value and predicate
+- [ ] Derive extras: `Display`, `From<T> for Inner`, `AsRef`, `FromStr`, `TryFrom<Inner>`, `Hash`/`Ord`, `const fn` constructors
+- [ ] `serde` feature: `Deserialize` routed through `try_new`
+- [ ] Debug-only / off switch for runtime checks
+- [ ] Contracts: methods and `&self`, `const fn`, lifetime generics, `Result`/`Option`-aware `ensures`, `old(x)`
+- [ ] Predicates: `%`/`*` by constant, `!`, `bool`, floats, `.len()`
+- [ ] Fractions: real splitting in `SharedU64` and the permission prover
+
+## Phase 13 — Adoption: Examples, Templates, Docs
+- [ ] Examples: `port`, `percentage`, `non_zero_quantity`, `money_cents`, `contract_basics`, `ffi_c_library/` (with `build.rs`), `shared_counter`; all run in CI
+- [ ] mdBook cookbook and a migration guide from `assert!`, `validator`, `nutype`, `garde`
+- [ ] Extend `positioning.md` with `nutype`, Prusti, Creusot, Kani, Flux
+- [ ] `#![doc = include_str!("../README.md")]` on the facade; badges; "which tool for what" table
+- [ ] `cargo-generate` starter template
+
+## Phase 14 — Automation
+- [ ] `release-plz`, tag-triggered publish with dry run, `cargo-semver-checks`
+- [ ] Dependabot (cargo, github-actions, gomod); scheduled `cargo deny`/audit and `cargo update`
+- [ ] Deploy mdBook to GitHub Pages; `cargo-llvm-cov`; `cargo-mutants` on the verifier; `justfile`
+
+## Phase 15 — Innovation (after v0.1.0)
+- [ ] Tri-state solver result `Valid | Invalid(model) | Unknown(reason)`, unsat cores, counterexamples in compile errors
+- [ ] Integer tightening (gcd normalisation, strict-bound tightening) to close the ℚ/ℤ gap
+- [ ] `cargo reficon explain <Type>` plus a CI gate on new runtime checks
+- [ ] Elision verdict in generated rustdoc on `new`
+- [ ] Predicate-derived `proptest`/`arbitrary` strategies
+- [ ] `refined!(Type, literal)` compile-time constructor
+- [ ] Header-watch `build.rs` helper and drift check; cross-target layout `--check`
